@@ -423,9 +423,10 @@ def is_stale(self):
 			return ret
 
 	# 5. check the timestamp of each dependency files listed is unchanged
+	f_tstamps = self.bld.f_tstamps
 	for x in lst:
 		try:
-			old_ts = self.bld.f_tstamps[x]
+			old_ts = f_tstamps[x]
 		except KeyError:
 			Logs.debug('rev_use: must post %r because %r is not in cache', self.name, x)
 			return True
