@@ -414,14 +414,6 @@ def is_stale(self):
 	except AttributeError:
 		cache = self.bld.cache_tstamp_rev_use = {}
 
-	def tstamp(x):
-		# compute files timestamps with some caching
-		try:
-			return cache[x]
-		except KeyError:
-			ret = cache[x] = os.stat(x).st_mtime
-			return ret
-
 	# 5. check the timestamp of each dependency files listed is unchanged
 	f_tstamps = self.bld.f_tstamps
 	for x in lst:
@@ -432,7 +424,10 @@ def is_stale(self):
 			return True
 
 		try:
-			ts = tstamp(x)
+			try:
+				ts = cache[x]
+			except KeyError:
+				ts = cache[x] = os.stat(x).st_mtime
 		except OSError:
 			del f_deps[(self.path.abspath(), self.idx)]
 			Logs.debug('rev_use: must post %r because %r does not exist anymore', self.name, x)
