@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 # Carlos Rafael Giani, 2006
-# Thomas Nagy, 2010
+# Thomas Nagy, 2010-2016 (ita)
 
 """
 Unit testing system for C/C++/D providing test execution:
@@ -31,13 +31,26 @@ the predefined callback::
 		bld(features='cxx cxxprogram test', source='main.c', target='app')
 		from waflib.Tools import waf_unit_test
 		bld.add_post_fun(waf_unit_test.summary)
+
+By passing --dump-test-scripts the build outputs corresponding python files
+(with extension _run.py) that are useful for debugging purposes.
 """
 
-import os
+import os, shlex, sys
 from waflib.TaskGen import feature, after_method, taskgen_method
 from waflib import Utils, Task, Logs, Options
 from waflib.Tools import ccroot
 testlock = Utils.threading.Lock()
+
+SCRIPT_TEMPLATE = """#! %(python)s
+import subprocess, sys
+cmd = %(cmd)r
+# if you want to debug with gdb:
+#cmd = ['gdb', '-args'] + cmd
+env = %(env)r
+status = subprocess.call(cmd, env=env, cwd=%(cwd)r, shell=isinstance(cmd, str))
+sys.exit(status)
+"""
 
 @feature('test')
 @after_method('apply_link', 'process_use')
@@ -76,7 +89,7 @@ def make_test(self):
 	if not hasattr(self, 'ut_env'):
 		self.ut_env = dct = dict(os.environ)
 		def add_path(var):
-			dct[var] = self.ut_paths + dct[var]
+			dct[var] = self.ut_paths + dct.get(var,'')
 		if Utils.is_win32:
 			add_path('PATH')
 		elif Utils.unversioned_sys_platform() == 'darwin':
@@ -139,20 +152,33 @@ class utest(Task.Task):
 		if hasattr(self.generator, 'ut_run'):
 			return self.generator.ut_run(self)
 
-		# TODO ut_exec, ut_fun, ut_cmd should be considered obsolete
+		# ut_fun is obsolete
 		self.ut_exec = getattr(self.generator, 'ut_exec', [self.inputs[0].abspath()])
 		if getattr(self.generator, 'ut_fun', None):
 			self.generator.ut_fun(self)
 		testcmd = getattr(self.generator, 'ut_cmd', False) or getattr(Options.options, 'testcmd', False)
 		if testcmd:
-			self.ut_exec = (testcmd % ' '.join(self.ut_exec)).split(' ')
+			self.ut_exec = shlex.split(testcmd % ' '.join(self.ut_exec))
 
 		return self.exec_command(self.ut_exec)
 
 	def exec_command(self, cmd, **kw):
 		Logs.debug('runner: %r', cmd)
+		if getattr(Options.options, 'dump_test_scripts', False):
+			global SCRIPT_TEMPLATE
+			script_code = SCRIPT_TEMPLATE % {
+				'python': sys.executable,
+				'env': self.get_test_env(),
+				'cwd': self.get_cwd().abspath(), 'cmd': cmd
+			}
+			script_file = self.inputs[0].abspath() + '_run.py'
+			Utils.writef(script_file, script_code)
+			os.chmod(script_file, Utils.O755)
+			if Logs.verbose > 1:
+				Logs.info('Test debug file written as %r' % script_file)
+
 		proc = Utils.subprocess.Popen(cmd, cwd=self.get_cwd().abspath(), env=self.get_test_env(),
-			stderr=Utils.subprocess.PIPE, stdout=Utils.subprocess.PIPE)
+			stderr=Utils.subprocess.PIPE, stdout=Utils.subprocess.PIPE, shell=isinstance(cmd,str))
 		(stdout, stderr) = proc.communicate()
 		self.waf_unit_test_results = tup = (self.inputs[0].abspath(), proc.returncode, stdout, stderr)
 		testlock.acquire()
@@ -219,9 +245,10 @@ def options(opt):
 	"""
 	opt.add_option('--notests', action='store_true', default=False, help='Exec no unit tests', dest='no_tests')
 	opt.add_option('--alltests', action='store_true', default=False, help='Exec all unit tests', dest='all_tests')
-	opt.add_option('--clear-failed', action='store_true', default=False, help='Force failed unit tests to run again next time', dest='clear_failed_tests')
-	opt.add_option('--testcmd', action='store', default=False,
-	 help = 'Run the unit tests using the test-cmd string'
-	 ' example "--test-cmd="valgrind --error-exitcode=1'
-	 ' %s" to run under valgrind', dest='testcmd')
+	opt.add_option('--clear-failed', action='store_true', default=False,
+		help='Force failed unit tests to run again next time', dest='clear_failed_tests')
+	opt.add_option('--testcmd', action='store', default=False, dest='testcmd',
+		help = 'Run the unit tests using the test-cmd string example "--testcmd="valgrind --error-exitcode=1 %s" to run under valgrind')
+	opt.add_option('--dump-test-scripts', action='store_true', default=False,
+		help='Create python scripts to help debug tests', dest='dump_test_scripts')
 

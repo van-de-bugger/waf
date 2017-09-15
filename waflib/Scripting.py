@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy, 2005-2010 (ita)
+# Thomas Nagy, 2005-2016 (ita)
 
 "Module called for configuring, compiling and installing targets"
 
@@ -38,6 +38,10 @@ def waf_entry_point(current_directory, version, wafdir):
 		ctx.parse_args()
 		sys.exit(0)
 
+	# Store current directory before any chdir
+	Context.waf_dir = wafdir
+	Context.launch_dir = current_directory
+
 	if len(sys.argv) > 1:
 		# os.path.join handles absolute paths in sys.argv[1] accordingly (it discards the previous ones)
 		# if sys.argv[1] is not an absolute path, then it is relative to the current working directory
@@ -49,9 +53,6 @@ def waf_entry_point(current_directory, version, wafdir):
 			# TODO abspath?
 			current_directory = os.path.normpath(os.path.dirname(potential_wscript))
 			sys.argv.pop(1)
-
-	Context.waf_dir = wafdir
-	Context.launch_dir = current_directory
 
 	# if 'configure' is in the commands, do not search any further
 	no_climb = os.environ.get('NOCLIMB')
@@ -91,6 +92,8 @@ def waf_entry_point(current_directory, version, wafdir):
 			else:
 				# check if the folder was not moved
 				for x in (env.run_dir, env.top_dir, env.out_dir):
+					if not x:
+						continue
 					if Utils.is_win32:
 						if cur == x:
 							load = True
@@ -208,7 +211,7 @@ def set_main_module(file_path):
 
 def parse_options():
 	"""
-	Parse the command-line options and initialize the logging system.
+	Parses the command-line options and initialize the logging system.
 	Called by :py:func:`waflib.Scripting.waf_entry_point` during the initialization.
 	"""
 	Context.create_context('options').execute()
@@ -237,7 +240,7 @@ def parse_options():
 
 def run_command(cmd_name):
 	"""
-	Execute a single command. Called by :py:func:`waflib.Scripting.run_commands`.
+	Executes a single Waf command. Called by :py:func:`waflib.Scripting.run_commands`.
 
 	:param cmd_name: command to execute, like ``build``
 	:type cmd_name: string
@@ -255,7 +258,7 @@ def run_command(cmd_name):
 
 def run_commands():
 	"""
-	Execute the commands that were given on the command-line, and the other options
+	Execute the Waf commands that were given on the command-line, and the other options
 	Called by :py:func:`waflib.Scripting.waf_entry_point` during the initialization, and executed
 	after :py:func:`waflib.Scripting.parse_options`.
 	"""
@@ -300,37 +303,53 @@ def distclean_dir(dirname):
 
 def distclean(ctx):
 	'''removes the build directory'''
-	lst = os.listdir('.')
-	for f in lst:
-		if f == Options.lockfile:
-			try:
-				proj = ConfigSet.ConfigSet(f)
-			except IOError:
-				Logs.warn('Could not read %r', f)
-				continue
 
-			if proj['out_dir'] != proj['top_dir']:
-				try:
-					shutil.rmtree(proj['out_dir'])
-				except EnvironmentError as e:
-					if e.errno != errno.ENOENT:
-						Logs.warn('Could not remove %r', proj['out_dir'])
-			else:
-				distclean_dir(proj['out_dir'])
+	def remove_and_log(k, fun):
+		try:
+			fun(k)
+		except EnvironmentError as e:
+			if e.errno != errno.ENOENT:
+				Logs.warn('Could not remove %r', k)
 
-			for k in (proj['out_dir'], proj['top_dir'], proj['run_dir']):
-				p = os.path.join(k, Options.lockfile)
-				try:
-					os.remove(p)
-				except OSError as e:
-					if e.errno != errno.ENOENT:
-						Logs.warn('Could not remove %r', p)
-
-		# remove local waf cache folders
-		if not Options.commands:
+	# remove waf cache folders on the top-level
+	if not Options.commands:
+		for k in os.listdir('.'):
 			for x in '.waf-1. waf-1. .waf3-1. waf3-1.'.split():
-				if f.startswith(x):
-					shutil.rmtree(f, ignore_errors=True)
+				if k.startswith(x):
+					remove_and_log(k, shutil.rmtree)
+
+	# remove a build folder, if any
+	cur = '.'
+	if ctx.options.no_lock_in_top:
+		cur = ctx.options.out
+
+	try:
+		lst = os.listdir(cur)
+	except OSError:
+		Logs.warn('Could not read %r', cur)
+		return
+
+	if Options.lockfile in lst:
+		f = os.path.join(cur, Options.lockfile)
+		try:
+			env = ConfigSet.ConfigSet(f)
+		except EnvironmentError:
+			Logs.warn('Could not read %r', f)
+			return
+
+		if not env.out_dir or not env.top_dir:
+			Logs.warn('Invalid lock file %r', f)
+			return
+
+		if env.out_dir == env.top_dir:
+			distclean_dir(env.out_dir)
+		else:
+			remove_and_log(env.out_dir, shutil.rmtree)
+
+		for k in (env.out_dir, env.top_dir, env.run_dir):
+			p = os.path.join(k, Options.lockfile)
+			remove_and_log(p, os.remove)
+
 
 class Dist(Context.Context):
 	'''creates an archive containing the project source code'''
@@ -348,7 +367,7 @@ class Dist(Context.Context):
 
 	def archive(self):
 		"""
-		Create the archive.
+		Creates the source archive.
 		"""
 		import tarfile
 
@@ -368,14 +387,14 @@ class Dist(Context.Context):
 		files = self.get_files()
 
 		if self.algo.startswith('tar.'):
-			tar = tarfile.open(arch_name, 'w:' + self.algo.replace('tar.', ''))
+			tar = tarfile.open(node.abspath(), 'w:' + self.algo.replace('tar.', ''))
 
 			for x in files:
 				self.add_tar_file(x, tar)
 			tar.close()
 		elif self.algo == 'zip':
 			import zipfile
-			zip = zipfile.ZipFile(arch_name, 'w', compression=zipfile.ZIP_DEFLATED)
+			zip = zipfile.ZipFile(node.abspath(), 'w', compression=zipfile.ZIP_DEFLATED)
 
 			for x in files:
 				archive_name = self.get_base_name() + '/' + x.path_from(self.base_path)
@@ -389,20 +408,26 @@ class Dist(Context.Context):
 		except ImportError:
 			digest = ''
 		else:
-			digest = ' (sha=%r)' % sha1(node.read()).hexdigest()
+			digest = ' (sha=%r)' % sha1(node.read(flags='rb')).hexdigest()
 
 		Logs.info('New archive created: %s%s', self.arch_name, digest)
 
 	def get_tar_path(self, node):
 		"""
-		return the path to use for a node in the tar archive, the purpose of this
+		Return the path to use for a node in the tar archive, the purpose of this
 		is to let subclases resolve symbolic links or to change file names
+
+		:return: absolute path
+		:rtype: string
 		"""
 		return node.abspath()
 
 	def add_tar_file(self, x, tar):
 		"""
-		Add a file to the tar archive. Symlinks are not verified.
+		Adds a file to the tar archive. Symlinks are not verified.
+
+		:param x: file path
+		:param tar: tar file object
 		"""
 		p = self.get_tar_path(x)
 		tinfo = tar.gettarinfo(name=p, arcname=self.get_tar_prefix() + '/' + x.path_from(self.base_path))
@@ -421,6 +446,11 @@ class Dist(Context.Context):
 			tar.addfile(tinfo)
 
 	def get_tar_prefix(self):
+		"""
+		Returns the base path for files added into the archive tar file
+
+		:rtype: string
+		"""
 		try:
 			return self.tar_prefix
 		except AttributeError:
@@ -428,7 +458,8 @@ class Dist(Context.Context):
 
 	def get_arch_name(self):
 		"""
-		Return the name of the archive to create. Change the default value by setting *arch_name*::
+		Returns the archive file name.
+		Set the attribute *arch_name* to change the default value::
 
 			def dist(ctx):
 				ctx.arch_name = 'ctx.tar.bz2'
@@ -443,7 +474,7 @@ class Dist(Context.Context):
 
 	def get_base_name(self):
 		"""
-		Return the default name of the main directory in the archive, which is set to *appname-version*.
+		Returns the default name of the main directory in the archive, which is set to *appname-version*.
 		Set the attribute *base_name* to change the default value::
 
 			def dist(ctx):
@@ -461,8 +492,8 @@ class Dist(Context.Context):
 
 	def get_excl(self):
 		"""
-		Return the patterns to exclude for finding the files in the top-level directory. Set the attribute *excl*
-		to change the default value::
+		Returns the patterns to exclude for finding the files in the top-level directory.
+		Set the attribute *excl* to change the default value::
 
 			def dist(ctx):
 				ctx.excl = 'build **/*.o **/*.class'
@@ -472,7 +503,7 @@ class Dist(Context.Context):
 		try:
 			return self.excl
 		except AttributeError:
-			self.excl = Node.exclude_regs + ' **/waf-1.8.* **/.waf-1.8* **/waf3-1.8.* **/.waf3-1.8* **/*~ **/*.rej **/*.orig **/*.pyc **/*.pyo **/*.bak **/*.swp **/.lock-w*'
+			self.excl = Node.exclude_regs + ' **/waf-1.* **/.waf-1.* **/waf3-1.* **/.waf3-1.* **/*~ **/*.rej **/*.orig **/*.pyc **/*.pyo **/*.bak **/*.swp **/.lock-w*'
 			if Context.out_dir:
 				nd = self.root.find_node(Context.out_dir)
 				if nd:
@@ -481,13 +512,13 @@ class Dist(Context.Context):
 
 	def get_files(self):
 		"""
-		The files to package are searched automatically by :py:func:`waflib.Node.Node.ant_glob`. Set
-		*files* to prevent this behaviour::
+		Files to package are searched automatically by :py:func:`waflib.Node.Node.ant_glob`.
+		Set *files* to prevent this behaviour::
 
 			def dist(ctx):
 				ctx.files = ctx.path.find_node('wscript')
 
-		The files are searched from the directory 'base_path', to change it, set::
+		Files are also searched from the directory 'base_path', to change it, set::
 
 			def dist(ctx):
 				ctx.base_path = path
@@ -500,18 +531,16 @@ class Dist(Context.Context):
 			files = self.base_path.ant_glob('**/*', excl=self.get_excl())
 		return files
 
-
 def dist(ctx):
 	'''makes a tarball for redistributing the sources'''
 	pass
 
 class DistCheck(Dist):
 	"""
-	Create an archive of the project, and try to build the project in a temporary directory::
+	Creates an archive of the project, then attempts to build the project in a temporary directory::
 
 		$ waf distcheck
 	"""
-
 	fun = 'distcheck'
 	cmd = 'distcheck'
 
@@ -523,9 +552,18 @@ class DistCheck(Dist):
 		self.archive()
 		self.check()
 
+	def make_distcheck_cmd(self, tmpdir):
+		cfg = []
+		if Options.options.distcheck_args:
+			cfg = shlex.split(Options.options.distcheck_args)
+		else:
+			cfg = [x for x in sys.argv if x.startswith('-')]
+		cmd = [sys.executable, sys.argv[0], 'configure', 'build', 'install', 'uninstall', '--destdir=' + tmpdir] + cfg
+		return cmd
+
 	def check(self):
 		"""
-		Create the archive, uncompress it and try to build the project
+		Creates the archive, uncompresses it and tries to build the project
 		"""
 		import tempfile, tarfile
 
@@ -536,15 +574,9 @@ class DistCheck(Dist):
 		finally:
 			t.close()
 
-		cfg = []
-
-		if Options.options.distcheck_args:
-			cfg = shlex.split(Options.options.distcheck_args)
-		else:
-			cfg = [x for x in sys.argv if x.startswith('-')]
-
 		instdir = tempfile.mkdtemp('.inst', self.get_base_name())
-		ret = Utils.subprocess.Popen([sys.executable, sys.argv[0], 'configure', 'install', 'uninstall', '--destdir=' + instdir] + cfg, cwd=self.get_base_name()).wait()
+		cmd = self.make_distcheck_cmd(instdir)
+		ret = Utils.subprocess.Popen(cmd, cwd=self.get_base_name()).wait()
 		if ret:
 			raise Errors.WafError('distcheck failed with code %r' % ret)
 
@@ -560,9 +592,12 @@ def distcheck(ctx):
 
 def autoconfigure(execute_method):
 	"""
-	Decorator used to set the commands that can be configured automatically
+	Decorator that enables context commands to run *configure* as needed.
 	"""
 	def execute(self):
+		"""
+		Wraps :py:func:`waflib.Context.Context.execute` on the context class
+		"""
 		if not Configure.autoconfig:
 			return execute_method(self)
 
@@ -578,22 +613,30 @@ def autoconfigure(execute_method):
 				do_config = True
 			else:
 				h = 0
-				for f in env['files']:
-					h = Utils.h_list((h, Utils.readf(f, 'rb')))
-				do_config = h != env.hash
+				for f in env.files:
+					try:
+						h = Utils.h_list((h, Utils.readf(f, 'rb')))
+					except EnvironmentError:
+						do_config = True
+						break
+				else:
+					do_config = h != env.hash
 
 		if do_config:
-			cmd = env['config_cmd'] or 'configure'
+			cmd = env.config_cmd or 'configure'
 			if Configure.autoconfig == 'clobber':
 				tmp = Options.options.__dict__
-				Options.options.__dict__ = env.options
+				if env.options:
+					Options.options.__dict__ = env.options
 				try:
 					run_command(cmd)
 				finally:
 					Options.options.__dict__ = tmp
 			else:
 				run_command(cmd)
-		return execute_method(self)
+			run_command(self.cmd)
+		else:
+			return execute_method(self)
 	return execute
 Build.BuildContext.execute = autoconfigure(Build.BuildContext.execute)
 

@@ -3,9 +3,9 @@
 # Thomas Nagy, 2011 (ita)
 
 """
-errcheck: highlight common mistakes
+Common mistakes highlighting.
 
-There is a performance hit, so this tool is only loaded when running "waf -v"
+There is a performance impact, so this tool is only loaded when running ``waf -v``
 """
 
 typos = {
@@ -24,7 +24,7 @@ meths_typos = ['__call__', 'program', 'shlib', 'stlib', 'objects']
 
 import sys
 from waflib import Logs, Build, Node, Task, TaskGen, ConfigSet, Errors, Utils
-import waflib.Tools.ccroot
+from waflib.Tools import ccroot
 
 def check_same_targets(self):
 	mp = Utils.defaultdict(list)
@@ -32,6 +32,8 @@ def check_same_targets(self):
 
 	def check_task(tsk):
 		if not isinstance(tsk, Task.Task):
+			return
+		if hasattr(tsk, 'no_errcheck_out'):
 			return
 
 		for node in tsk.outputs:
@@ -61,22 +63,26 @@ def check_same_targets(self):
 					Logs.error('  %d. %r', 1 + v.index(x), x.generator)
 				else:
 					Logs.error('  %d. %r in %r', 1 + v.index(x), x.generator.name, getattr(x.generator, 'path', None))
+			Logs.error('If you think that this is an error, set no_errcheck_out on the task instance')
 
 	if not dupe:
 		for (k, v) in uids.items():
 			if len(v) > 1:
 				Logs.error('* Several tasks use the same identifier. Please check the information on\n   https://waf.io/apidocs/Task.html?highlight=uid#waflib.Task.Task.uid')
+				tg_details = tsk.generator.name
+				if Logs.verbose > 2:
+					tg_details = tsk.generator
 				for tsk in v:
-					Logs.error('  - object %r (%r) defined in %r', tsk.__class__.__name__, tsk, tsk.generator)
+					Logs.error('  - object %r (%r) defined in %r', tsk.__class__.__name__, tsk, tg_details)
 
 def check_invalid_constraints(self):
-	feat = set([])
+	feat = set()
 	for x in list(TaskGen.feats.values()):
 		feat.union(set(x))
 	for (x, y) in TaskGen.task_gen.prec.items():
 		feat.add(x)
 		feat.union(set(y))
-	ext = set([])
+	ext = set()
 	for x in TaskGen.task_gen.mappings.values():
 		ext.add(x.__name__)
 	invalid = ext & feat
@@ -97,8 +103,8 @@ def check_invalid_constraints(self):
 
 def replace(m):
 	"""
-	We could add properties, but they would not work in some cases:
-	bld.program(...) requires 'source' in the attributes
+	Replaces existing BuildContext methods to verify parameter names,
+	for example ``bld(source=)`` has no ending *s*
 	"""
 	oldcall = getattr(Build.BuildContext, m)
 	def call(self, *k, **kw):
@@ -113,7 +119,7 @@ def replace(m):
 
 def enhance_lib():
 	"""
-	modify existing classes and methods
+	Modifies existing classes and methods to enable error verification
 	"""
 	for m in meths_typos:
 		replace(m)
@@ -121,10 +127,13 @@ def enhance_lib():
 	# catch '..' in ant_glob patterns
 	def ant_glob(self, *k, **kw):
 		if k:
-			lst=Utils.to_list(k[0])
+			lst = Utils.to_list(k[0])
 			for pat in lst:
-				if '..' in pat.split('/'):
+				sp = pat.split('/')
+				if '..' in sp:
 					Logs.error("In ant_glob pattern %r: '..' means 'two dots', not 'parent directory'", k[0])
+				if '.' in sp:
+					Logs.error("In ant_glob pattern %r: '.' means 'one dot', not 'current directory'", k[0])
 		if kw.get('remove', True):
 			try:
 				if self.is_child_of(self.ctx.bldnode) and not kw.get('quiet', False):
@@ -200,7 +209,7 @@ def enhance_lib():
 	TaskGen.task_gen.use_rec = use_rec
 
 	# check for env.append
-	def getattri(self, name, default=None):
+	def _getattr(self, name, default=None):
 		if name == 'append' or name == 'add':
 			raise Errors.WafError('env.append and env.add do not exist: use env.append_value/env.append_unique')
 		elif name == 'prepend':
@@ -209,15 +218,12 @@ def enhance_lib():
 			return object.__getattr__(self, name, default)
 		else:
 			return self[name]
-	ConfigSet.ConfigSet.__getattr__ = getattri
+	ConfigSet.ConfigSet.__getattr__ = _getattr
 
 
 def options(opt):
 	"""
-	Add a few methods
+	Error verification can be enabled by default (not just on ``waf -v``) by adding to the user script options
 	"""
 	enhance_lib()
-
-def configure(conf):
-	pass
 

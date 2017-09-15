@@ -229,8 +229,8 @@ def apply_uselib_local(self):
 	self.includes = self.to_list(getattr(self, 'includes', []))
 	names = self.to_list(getattr(self, 'uselib_local', []))
 	get = self.bld.get_tgen_by_name
-	seen = set([])
-	seen_uselib = set([])
+	seen = set()
+	seen_uselib = set()
 	tmp = Utils.deque(names) # consume a copy of the list of names
 	if tmp:
 		if Logs.verbose:
@@ -316,10 +316,12 @@ def apply_objdeps(self):
 			lst = y.to_list(y.add_objects)
 			lst.reverse()
 			for u in lst:
-				if u in seen: continue
+				if u in seen:
+					continue
 				added = 1
 				names = [u]+names
-			if added: continue # list of names modified, loop
+			if added:
+				continue # list of names modified, loop
 
 		# safe to process the current object
 		y.post()
@@ -341,8 +343,10 @@ def add_obj_file(self, file):
 	"""Small example on how to link object files as if they were source
 	obj = bld.create_obj('cc')
 	obj.add_obj_file('foo.o')"""
-	if not hasattr(self, 'obj_files'): self.obj_files = []
-	if not 'process_obj_files' in self.meths: self.meths.append('process_obj_files')
+	if not hasattr(self, 'obj_files'):
+		self.obj_files = []
+	if not 'process_obj_files' in self.meths:
+		self.meths.append('process_obj_files')
 	self.obj_files.append(file)
 
 

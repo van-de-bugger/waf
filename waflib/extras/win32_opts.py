@@ -18,7 +18,7 @@ except AttributeError:
 	TP = '%s\\*'
 
 if Utils.is_win32:
-	from waflib.extras import md5_tstamp
+	from waflib.Tools import md5_tstamp
 	import ctypes, ctypes.wintypes
 
 	FindFirstFile        = ctypes.windll.kernel32.FindFirstFileW
@@ -146,7 +146,7 @@ if Utils.is_win32:
 		if isinstance(lst, str):
 			lst = [x for x in Utils.split_path(lst) if x and x != '.']
 
-		node = self.get_bld().search(lst)
+		node = self.get_bld().search_node(lst)
 		if node:
 			if not node.isfile_cached():
 				try:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 # andersg at 0x63.nu 2007
-# Thomas Nagy 2010 (ita)
+# Thomas Nagy 2016 (ita)
 
 """
 Support for Perl extensions. A C/C++ compiler is required::
@@ -36,8 +36,9 @@ def init_perlext(self):
 	*lib* prefix from library names.
 	"""
 	self.uselib = self.to_list(getattr(self, 'uselib', []))
-	if not 'PERLEXT' in self.uselib: self.uselib.append('PERLEXT')
-	self.env['cshlib_PATTERN'] = self.env['cxxshlib_PATTERN'] = self.env['perlext_PATTERN']
+	if not 'PERLEXT' in self.uselib:
+		self.uselib.append('PERLEXT')
+	self.env.cshlib_PATTERN = self.env.cxxshlib_PATTERN = self.env.perlext_PATTERN
 
 @extension('.xs')
 def xsubpp_file(self, node):
@@ -80,7 +81,7 @@ def check_perl_version(self, minver=None):
 		if ver < minver:
 			res = False
 
-	self.end_msg(version, color=res and "GREEN" or "YELLOW")
+	self.end_msg(version, color=res and 'GREEN' or 'YELLOW')
 	return res
 
 @conf
@@ -133,18 +134,18 @@ def check_perl_ext_devel(self):
 				return xsubpp
 		return self.find_program('xsubpp')
 
-	env['LINKFLAGS_PERLEXT'] = cfg_lst('$Config{lddlflags}')
-	env['INCLUDES_PERLEXT'] = cfg_lst('$Config{archlib}/CORE')
-	env['CFLAGS_PERLEXT'] = cfg_lst('$Config{ccflags} $Config{cccdlflags}')
-	env['EXTUTILS_TYPEMAP'] = cfg_lst('$Config{privlib}/ExtUtils/typemap')
-	env['XSUBPP'] = find_xsubpp()
+	env.LINKFLAGS_PERLEXT = cfg_lst('$Config{lddlflags}')
+	env.INCLUDES_PERLEXT = cfg_lst('$Config{archlib}/CORE')
+	env.CFLAGS_PERLEXT = cfg_lst('$Config{ccflags} $Config{cccdlflags}')
+	env.EXTUTILS_TYPEMAP = cfg_lst('$Config{privlib}/ExtUtils/typemap')
+	env.XSUBPP = find_xsubpp()
 
 	if not getattr(Options.options, 'perlarchdir', None):
-		env['ARCHDIR_PERL'] = cfg_str('$Config{sitearch}')
+		env.ARCHDIR_PERL = cfg_str('$Config{sitearch}')
 	else:
-		env['ARCHDIR_PERL'] = getattr(Options.options, 'perlarchdir')
+		env.ARCHDIR_PERL = getattr(Options.options, 'perlarchdir')
 
-	env['perlext_PATTERN'] = '%s.' + cfg_str('$Config{dlext}')
+	env.perlext_PATTERN = '%s.' + cfg_str('$Config{dlext}')
 
 def options(opt):
 	"""
@@ -152,3 +153,4 @@ def options(opt):
 	"""
 	opt.add_option('--with-perl-binary', type='string', dest='perlbinary', help = 'Specify alternate perl binary', default=None)
 	opt.add_option('--with-perl-archdir', type='string', dest='perlarchdir', help = 'Specify directory where to install arch specific files', default=None)
+

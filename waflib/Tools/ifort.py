@@ -1,12 +1,13 @@
 #! /usr/bin/env python
 # encoding: utf-8
 # DC 2008
-# Thomas Nagy 2010 (ita)
+# Thomas Nagy 2016 (ita)
 
-import re
-from waflib import Utils
-from waflib.Tools import fc, fc_config, fc_scan, ar
+import os, re
+from waflib import Utils, Logs, Errors
+from waflib.Tools import fc, fc_config, fc_scan, ar, ccroot
 from waflib.Configure import conf
+from waflib.TaskGen import after_method, feature
 
 @conf
 def find_ifort(conf):
@@ -54,8 +55,9 @@ def ifort_modifier_platform(conf):
 
 @conf
 def get_ifort_version(conf, fc):
-	"""get the compiler version"""
-
+	"""
+	Detects the compiler version and sets ``conf.env.FC_VERSION``
+	"""
 	version_re = re.compile(r"\bIntel\b.*\bVersion\s*(?P<major>\d*)\.(?P<minor>\d*)",re.I).search
 	if Utils.is_win32:
 		cmd = fc
@@ -67,9 +69,12 @@ def get_ifort_version(conf, fc):
 	if not match:
 		conf.fatal('cannot determine ifort version.')
 	k = match.groupdict()
-	conf.env['FC_VERSION'] = (k['major'], k['minor'])
+	conf.env.FC_VERSION = (k['major'], k['minor'])
 
 def configure(conf):
+	"""
+	Detects the Intel Fortran compilers
+	"""
 	if Utils.is_win32:
 		compiler, version, path, includes, libdirs, arch = conf.detect_ifort(True)
 		v = conf.env
@@ -80,8 +85,7 @@ def configure(conf):
 		v.MSVC_COMPILER = compiler
 		try:
 			v.MSVC_VERSION = float(version)
-		except Exception:
-			raise
+		except ValueError:
 			v.MSVC_VERSION = float(version[:-3])
 
 		conf.find_ifort_win32()
@@ -94,20 +98,15 @@ def configure(conf):
 		conf.fc_add_flags()
 		conf.ifort_modifier_platform()
 
-import os, re
-from waflib import Task, Logs, Errors
-from waflib.TaskGen import after_method, feature
-
-from waflib.Configure import conf
-from waflib.Tools import ccroot, ar
-
 
 all_ifort_platforms = [ ('intel64', 'amd64'), ('em64t', 'amd64'), ('ia32', 'x86'), ('Itanium', 'ia64')]
 """List of icl platforms"""
 
 @conf
 def gather_ifort_versions(conf, versions):
-	# some logic to try and list installed fortran compilers
+	"""
+	List compiler versions by looking up registry keys
+	"""
 	version_pattern = re.compile('^...?.?\....?.?')
 	try:
 		all_versions = Utils.winreg.OpenKey(Utils.winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Wow6432node\\Intel\\Compilers\\Fortran')
@@ -127,8 +126,10 @@ def gather_ifort_versions(conf, versions):
 			continue
 		targets = {}
 		for target,arch in all_ifort_platforms:
-			if target=='intel64': targetDir='EM64T_NATIVE'
-			else: targetDir=target
+			if target=='intel64':
+				targetDir='EM64T_NATIVE'
+			else:
+				targetDir=target
 			try:
 				Utils.winreg.OpenKey(all_versions,version+'\\'+targetDir)
 				icl_version=Utils.winreg.OpenKey(all_versions,version)
@@ -164,8 +165,8 @@ def setup_ifort(conf, versiondict):
 	:return: the compiler, revision, path, include dirs, library paths and target architecture
 	:rtype: tuple of strings
 	"""
-	platforms = Utils.to_list(conf.env['MSVC_TARGETS']) or [i for i,j in all_ifort_platforms]
-	desired_versions = conf.env['MSVC_VERSIONS'] or list(reversed(list(versiondict.keys())))
+	platforms = Utils.to_list(conf.env.MSVC_TARGETS) or [i for i,j in all_ifort_platforms]
+	desired_versions = conf.env.MSVC_VERSIONS or list(reversed(list(versiondict.keys())))
 	for version in desired_versions:
 		try:
 			targets = versiondict[version]
@@ -224,7 +225,7 @@ echo LIB=%%LIB%%;%%LIBPATH%%
 	compiler_name, linker_name, lib_name = _get_prog_names(conf, compiler)
 	fc = conf.find_program(compiler_name, path_list=MSVC_PATH)
 
-	# delete CL if exists. because it could contain parameters wich can change cl's behaviour rather catastrophically.
+	# delete CL if exists. because it could contain parameters which can change cl's behaviour rather catastrophically.
 	if 'CL' in env:
 		del(env['CL'])
 
@@ -247,7 +248,7 @@ echo LIB=%%LIB%%;%%LIBPATH%%
 
 class target_compiler(object):
 	"""
-	Wrap a compiler configuration; call evaluate() to determine
+	Wraps a compiler configuration; call evaluate() to determine
 	whether the configuration is usable.
 	"""
 	def __init__(self, ctx, compiler, cpu, version, bat_target, bat, callback=None):
@@ -294,7 +295,6 @@ class target_compiler(object):
 
 @conf
 def detect_ifort(self):
-	# Save installed versions only if lazy detection is disabled.
 	return self.setup_ifort(self.get_ifort_versions(False))
 
 @conf
@@ -323,9 +323,9 @@ def _get_prog_names(self, compiler):
 def find_ifort_win32(conf):
 	# the autodetection is supposed to be performed before entering in this method
 	v = conf.env
-	path = v['PATH']
-	compiler = v['MSVC_COMPILER']
-	version = v['MSVC_VERSION']
+	path = v.PATH
+	compiler = v.MSVC_COMPILER
+	version = v.MSVC_VERSION
 
 	compiler_name, linker_name, lib_name = _get_prog_names(conf, compiler)
 	v.IFORT_MANIFEST = (compiler == 'intel' and version >= 11)
@@ -335,25 +335,24 @@ def find_ifort_win32(conf):
 
 	# before setting anything, check if the compiler is really intel fortran
 	env = dict(conf.environ)
-	if path: env.update(PATH = ';'.join(path))
+	if path:
+		env.update(PATH = ';'.join(path))
 	if not conf.cmd_and_log(fc + ['/nologo', '/help'], env=env):
 		conf.fatal('not intel fortran compiler could not be identified')
 
-	v['FC_NAME'] = 'IFORT'
+	v.FC_NAME = 'IFORT'
 
-	# linker
-	if not v['LINK_FC']:
+	if not v.LINK_FC:
 		conf.find_program(linker_name, var='LINK_FC', path_list=path, mandatory=True)
 
-	# staticlib linker
-	if not v['AR']:
+	if not v.AR:
 		conf.find_program(lib_name, path_list=path, var='AR', mandatory=True)
-		v['ARFLAGS'] = ['/nologo']
+		v.ARFLAGS = ['/nologo']
 
 	# manifest tool. Not required for VS 2003 and below. Must have for VS 2005 and later
 	if v.IFORT_MANIFEST:
 		conf.find_program('MT', path_list=path, var='MT')
-		v['MTFLAGS'] = ['/nologo']
+		v.MTFLAGS = ['/nologo']
 
 	try:
 		conf.load('winres')
@@ -367,7 +366,7 @@ def find_ifort_win32(conf):
 @feature('fc')
 def apply_flags_ifort(self):
 	"""
-	Add additional flags implied by msvc, such as subsystems and pdb files::
+	Adds additional flags implied by msvc, such as subsystems and pdb files::
 
 		def build(bld):
 			bld.stlib(source='main.c', target='bar', subsystem='gruik')
@@ -398,6 +397,10 @@ def apply_flags_ifort(self):
 @feature('fcprogram', 'fcshlib', 'fcprogram_test')
 @after_method('apply_link')
 def apply_manifest_ifort(self):
+	"""
+	Enables manifest embedding in Fortran DLLs when using ifort on Windows
+	See: http://msdn2.microsoft.com/en-us/library/ms235542(VS.80).aspx
+	"""
 	if self.env.IFORT_WIN32 and getattr(self, 'link_task', None):
 		# it seems ifort.exe cannot be called for linking
 		self.link_task.env.FC = self.env.LINK_FC

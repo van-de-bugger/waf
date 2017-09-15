@@ -9,13 +9,13 @@ this tool to be too stable either (apis, etc)
 """
 
 import re
-from waflib import Context, Task, Utils, Logs, Options, Errors, Node
+from waflib import Build, Context, Task, Utils, Logs, Options, Errors, Node
 from waflib.TaskGen import extension, taskgen_method
 from waflib.Configure import conf
 
 class valac(Task.Task):
 	"""
-	Task to compile vala files.
+	Compiles vala files
 	"""
 	#run_str = "${VALAC} ${VALAFLAGS}" # ideally
 	#vars = ['VALAC_VERSION']
@@ -35,8 +35,6 @@ class valac(Task.Task):
 			self.generator.dump_deps_node.write('\n'.join(self.generator.packages))
 
 		return ret
-
-valac = Task.update_outputs(valac) # no decorators for python2 classes
 
 @taskgen_method
 def init_vala_task(self):
@@ -126,7 +124,7 @@ def init_vala_task(self):
 	valatask.install_path = getattr(self, 'install_path', '')
 
 	valatask.vapi_path = getattr(self, 'vapi_path', '${DATAROOTDIR}/vala/vapi')
-	valatask.pkg_name = getattr(self, 'pkg_name', self.env['PACKAGE'])
+	valatask.pkg_name = getattr(self, 'pkg_name', self.env.PACKAGE)
 	valatask.header_path = getattr(self, 'header_path', '${INCLUDEDIR}/%s-%s' % (valatask.pkg_name, _get_api_version()))
 	valatask.install_binding = getattr(self, 'install_binding', True)
 
@@ -147,8 +145,15 @@ def init_vala_task(self):
 				package_obj = self.bld.get_tgen_by_name(package)
 			except Errors.WafError:
 				continue
+
+			# in practice the other task is already processed
+			# but this makes it explicit
+			package_obj.post()
 			package_name = package_obj.target
 			for task in package_obj.tasks:
+				if isinstance(task, Build.inst):
+					# TODO are we not expecting just valatask here?
+					continue
 				for output in task.outputs:
 					if output.name == package_name + ".vapi":
 						valatask.set_run_after(task)
@@ -183,21 +188,15 @@ def init_vala_task(self):
 
 	if self.is_lib and valatask.install_binding:
 		headers_list = [o for o in valatask.outputs if o.suffix() == ".h"]
-		try:
-			self.install_vheader.source = headers_list
-		except AttributeError:
+		if headers_list:
 			self.install_vheader = self.add_install_files(install_to=valatask.header_path, install_from=headers_list)
 
 		vapi_list = [o for o in valatask.outputs if (o.suffix() in (".vapi", ".deps"))]
-		try:
-			self.install_vapi.source = vapi_list
-		except AttributeError:
+		if vapi_list:
 			self.install_vapi = self.add_install_files(install_to=valatask.vapi_path, install_from=vapi_list)
 
 		gir_list = [o for o in valatask.outputs if o.suffix() == '.gir']
-		try:
-			self.install_gir.source = gir_list
-		except AttributeError:
+		if gir_list:
 			self.install_gir = self.add_install_files(
 				install_to=getattr(self, 'gir_path', '${DATAROOTDIR}/gir-1.0'), install_from=gir_list)
 
@@ -252,6 +251,15 @@ def vala_file(self, node):
 	valatask.outputs.append(c_node)
 	self.source.append(c_node)
 
+@extension('.vapi')
+def vapi_file(self, node):
+	try:
+		valatask = self.valatask
+	except AttributeError:
+		valatask = self.valatask = self.create_task('valac')
+		self.init_vala_task()
+	valatask.inputs.append(node)
+
 @conf
 def find_valac(self, valac_name, min_version):
 	"""
@@ -277,7 +285,7 @@ def find_valac(self, valac_name, min_version):
 	if valac and valac_version < min_version:
 		self.fatal("%s version %r is too old, need >= %r" % (valac_name, valac_version, min_version))
 
-	self.env['VALAC_VERSION'] = valac_version
+	self.env.VALAC_VERSION = valac_version
 	return valac
 
 @conf
@@ -307,7 +315,7 @@ def check_vala_deps(self):
 	"""
 	Load the gobject and gthread packages if they are missing.
 	"""
-	if not self.env['HAVE_GOBJECT']:
+	if not self.env.HAVE_GOBJECT:
 		pkg_args = {'package':      'gobject-2.0',
 		            'uselib_store': 'GOBJECT',
 		            'args':         '--cflags --libs'}
@@ -315,7 +323,7 @@ def check_vala_deps(self):
 			pkg_args['atleast_version'] = Options.options.vala_target_glib
 		self.check_cfg(**pkg_args)
 
-	if not self.env['HAVE_GTHREAD']:
+	if not self.env.HAVE_GTHREAD:
 		pkg_args = {'package':      'gthread-2.0',
 		            'uselib_store': 'GTHREAD',
 		            'args':         '--cflags --libs'}

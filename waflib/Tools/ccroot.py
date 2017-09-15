@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy, 2005-2010 (ita)
+# Thomas Nagy, 2005-2016 (ita)
 
 """
 Classes and methods shared by tools providing support for C-like language such
@@ -77,7 +77,7 @@ def to_incnodes(self, inlst):
 	:return: list of include folders as nodes
 	"""
 	lst = []
-	seen = set([])
+	seen = set()
 	for x in self.to_list(inlst):
 		if x in seen or not x:
 			continue
@@ -118,10 +118,10 @@ def apply_incpaths(self):
 	and the list of include paths in ``tg.env.INCLUDES``.
 	"""
 
-	lst = self.to_incnodes(self.to_list(getattr(self, 'includes', [])) + self.env['INCLUDES'])
+	lst = self.to_incnodes(self.to_list(getattr(self, 'includes', [])) + self.env.INCLUDES)
 	self.includes_nodes = lst
 	cwd = self.get_cwd()
-	self.env['INCPATHS'] = [x.path_from(cwd) for x in lst]
+	self.env.INCPATHS = [x.path_from(cwd) for x in lst]
 
 class link_task(Task.Task):
 	"""
@@ -227,8 +227,10 @@ class stlink_task(link_task):
 def rm_tgt(cls):
 	old = cls.run
 	def wrap(self):
-		try: os.remove(self.outputs[0].abspath())
-		except OSError: pass
+		try:
+			os.remove(self.outputs[0].abspath())
+		except OSError:
+			pass
 		return old(self)
 	setattr(cls, 'run', wrap)
 rm_tgt(stlink_task)
@@ -333,7 +335,7 @@ def process_use(self):
 	See :py:func:`waflib.Tools.ccroot.use_rec`.
 	"""
 
-	use_not = self.tmp_use_not = set([])
+	use_not = self.tmp_use_not = set()
 	self.tmp_use_seen = [] # we would like an ordered set
 	use_prec = self.tmp_use_prec = {}
 	self.uselib = self.to_list(getattr(self, 'uselib', []))
@@ -441,7 +443,7 @@ def get_uselib_vars(self):
 	:return: the *uselib* variables associated to the *features* attribute (see :py:attr:`waflib.Tools.ccroot.USELIB_VARS`)
 	:rtype: list of string
 	"""
-	_vars = set([])
+	_vars = set()
 	for x in self.features:
 		if x in USELIB_VARS:
 			_vars |= USELIB_VARS[x]
@@ -456,7 +458,7 @@ def propagate_uselib_vars(self):
 		def build(bld):
 			bld.env.AFLAGS_aaa = ['bar']
 			from waflib.Tools.ccroot import USELIB_VARS
-			USELIB_VARS['aaa'] = set('AFLAGS')
+			USELIB_VARS['aaa'] = ['AFLAGS']
 
 			tg = bld(features='aaa', aflags='test')
 
@@ -498,9 +500,9 @@ def apply_implib(self):
 		name = self.target.name
 	else:
 		name = os.path.split(self.target)[1]
-	implib = self.env['implib_PATTERN'] % name
+	implib = self.env.implib_PATTERN % name
 	implib = dll.parent.find_or_declare(implib)
-	self.env.append_value('LINKFLAGS', self.env['IMPLIB_ST'] % implib.bldpath())
+	self.env.append_value('LINKFLAGS', self.env.IMPLIB_ST % implib.bldpath())
 	self.link_task.outputs.append(implib)
 
 	if getattr(self, 'defs', None) and self.env.DEST_BINFMT == 'pe':
@@ -593,7 +595,7 @@ def apply_vnum(self):
 		self.create_task('vnum', node, outs)
 
 	if getattr(self, 'install_task', None):
-		self.install_task.hasrun = Task.SKIP_ME
+		self.install_task.hasrun = Task.SKIPPED
 		path = self.install_task.install_to
 		if self.env.DEST_OS == 'openbsd':
 			libname = self.link_task.outputs[0].name
@@ -608,7 +610,7 @@ def apply_vnum(self):
 			else:
 				self.vnum_install_task = (t1, t3)
 
-	if '-dynamiclib' in self.env['LINKFLAGS']:
+	if '-dynamiclib' in self.env.LINKFLAGS:
 		# this requires after(propagate_uselib_vars)
 		try:
 			inst_to = self.install_path
@@ -626,7 +628,6 @@ class vnum(Task.Task):
 	Create the symbolic links for a versioned shared library. Instances are created by :py:func:`waflib.Tools.ccroot.apply_vnum`
 	"""
 	color = 'CYAN'
-	quient = True
 	ext_in = ['.bin']
 	def keyword(self):
 		return 'Symlinking'

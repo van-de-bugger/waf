@@ -9,7 +9,7 @@ To add a tool that does not exist in the folder compat15, pass an absolute path:
 ./waf-light  --tools=compat15,/comp/waf/aba.py --prelude=$'\tfrom waflib.extras import aba\n\taba.foo()'
 """
 
-VERSION="1.9.0"
+VERSION="1.9.13"
 APPNAME='waf'
 REVISION=''
 
@@ -49,7 +49,7 @@ def to_bytes(x):
 		return x.encode()
 	return x
 
-print("------> Executing code from the top-level wscript <-----")
+Logs.warn('------> Executing code from the top-level wscript <-----')
 def init(ctx):
 	if Options.options.setver: # maintainer only (ita)
 		ver = Options.options.setver
@@ -81,6 +81,9 @@ def options(opt):
 	# generate waf
 	opt.add_option('--make-waf', action='store_true', default=True,
 		help='creates the waf script', dest='waf')
+
+	opt.add_option('--interpreter', action='store', default=None,
+		help='specify the #! line on top of the waf file', dest='interpreter')
 
 	opt.add_option('--sign', action='store_true', default=False, help='make a signed file', dest='signed')
 
@@ -157,7 +160,7 @@ def process_tokens(tokens):
 		if token != '\n':
 			prev = type
 
-	body = "".join(accu)
+	body = ''.join(accu)
 	return body
 
 deco_re = re.compile('(def|class)\\s+(\w+)\\(.*')
@@ -174,19 +177,18 @@ def process_decorators(body):
 			if not name:
 				raise IOError("decorator not followed by a function!" + line)
 			for x in buf:
-				all_deco.append("%s(%s)" % (x, name))
+				all_deco.append('%s(%s)' % (x, name))
 			accu.append(line)
 			buf = []
 		else:
 			accu.append(line)
-	return "\n".join(accu+all_deco)
+	return '\n'.join(accu+all_deco)
 
 def sfilter(path):
-
 	if path.endswith('.py') :
 		if Options.options.strip_comments:
 			if sys.version_info[0] >= 3:
-				f = open(path, "rb")
+				f = open(path, 'rb')
 				try:
 					tk = tokenize.tokenize(f.readline)
 					next(tk) # the first one is always tokenize.ENCODING for Python 3, ignore it
@@ -194,13 +196,13 @@ def sfilter(path):
 				finally:
 					f.close()
 			else:
-				f = open(path, "r")
+				f = open(path, 'r')
 				try:
 					cnt = process_tokens(tokenize.generate_tokens(f.readline))
 				finally:
 					f.close()
 		else:
-			f = open(path, "r")
+			f = open(path, 'r')
 			try:
 				cnt = f.read()
 			finally:
@@ -213,7 +215,7 @@ def sfilter(path):
 		cnt = '#! /usr/bin/env python\n# encoding: utf-8\n# WARNING! Do not edit! https://waf.io/book/index.html#_obtaining_the_waf_file\n\n' + cnt
 
 	else:
-		f = open(path, "r")
+		f = open(path, 'r')
 		try:
 			cnt = f.read()
 		finally:
@@ -225,7 +227,7 @@ def sfilter(path):
 
 def create_waf(self, *k, **kw):
 	mw = 'tmp-waf-'+VERSION
-	print("-> preparing %r" % mw)
+	print('-> preparing %r' % mw)
 
 	import tarfile, zipfile
 
@@ -233,11 +235,36 @@ def create_waf(self, *k, **kw):
 	if zipType not in zip_types:
 		zipType = zip_types[0]
 
-
+	directory_files = {}
 	files = []
 	add3rdparty = []
 	for x in Options.options.add3rdparty.split(','):
-		if os.path.isabs(x):
+		if os.path.isdir(x):
+			# Create mapping from files absolute path to path in module
+			# directory (for module mylib):
+			#
+			#     {"/home/path/mylib/__init__.py": "mylib/__init__.py",
+			#      "/home/path/mylib/lib.py": "mylib/lib.py",
+			#      "/home/path/mylib/sub/sub.py": "mylib/sub/lib.py"
+			#     }
+			#
+			x_dir = self.generator.bld.root.find_dir(
+				os.path.abspath(os.path.expanduser(x)))
+
+			file_list = x_dir.ant_glob('**/*.py')
+
+			for f in file_list:
+
+				file_from = f.abspath()
+				file_to = os.path.join(x_dir.name, f.path_from(x_dir))
+
+				# If this is executed on Windows, then file_to will contain
+				# '\' path separators. These should be changed to '/', otherwise
+				# the added tools will not be accessible on Unix systems.
+				directory_files[file_from] = file_to.replace('\\', '/')
+				files.append(file_from)
+
+		elif os.path.isabs(x):
 			files.append(x)
 		else:
 			add3rdparty.append(x + '.py')
@@ -284,13 +311,17 @@ def create_waf(self, *k, **kw):
 		(code, size, cnt) = sfilter(x)
 		tarinfo.size = size
 
-		if os.path.isabs(x):
+		if x in directory_files:
+			tarinfo.name = 'waflib/extras/' + directory_files[x]
+		elif os.path.isabs(x):
 			tarinfo.name = 'waflib/extras/' + os.path.split(x)[1]
 
-		print("   adding %s as %s" % (x, tarinfo.name))
+		print('   adding %s as %s' % (x, tarinfo.name))
 		def dest(x):
-			if os.path.isabs(x):
-				return os.path.join("extras", os.path.basename(x))
+			if x in directory_files:
+				return os.path.join('waflib', 'extras', directory_files[x])
+			elif os.path.isabs(x):
+				return os.path.join('waflib', 'extras', os.path.basename(x))
 			else:
 				return os.path.normpath(os.path.relpath(x, "."))
 
@@ -312,7 +343,7 @@ def create_waf(self, *k, **kw):
 	# when possible, set the git revision in the waf file
 	bld = self.generator.bld
 	try:
-		rev = bld.cmd_and_log("git rev-parse HEAD", quiet=0).strip()
+		rev = bld.cmd_and_log('git rev-parse HEAD', quiet=0).strip()
 	except Exception:
 		rev = ''
 	else:
@@ -361,6 +392,9 @@ def create_waf(self, *k, **kw):
 	(cnt, C1) = find_unused(cnt, '\n')
 	ccc = code1.replace("C1='x'", "C1='%s'" % C1).replace("C2='x'", "C2='%s'" % C2).replace("C3='x'", "C3='%s'" % C3)
 
+	if getattr(Options.options, 'interpreter', None):
+		ccc = ccc.replace('#!/usr/bin/env python', Options.options.interpreter)
+
 	f = open('waf', 'wb')
 	try:
 		f.write(ccc.encode())
@@ -391,7 +425,7 @@ def create_waf(self, *k, **kw):
 	if sys.platform == 'win32' or Options.options.make_batch:
 		f = open('waf.bat', 'w')
 		try:
-			f.write('@python -x "%~dp0waf" %*\n@exit /b %ERRORLEVEL%\n')
+			f.write('@setlocal\n@set PYEXE=python\n@where %PYEXE% 1>NUL 2>NUL\n@if %ERRORLEVEL% neq 0 set PYEXE=py\n@%PYEXE% -x "%~dp0waf" %*\n@exit /b %ERRORLEVEL%\n')
 		finally:
 			f.close()
 
@@ -409,4 +443,3 @@ def build(bld):
 class Dist(Scripting.Dist):
 	def get_excl(self):
 		return super(self.__class__, self).get_excl() + ' **/waflib.zip'
-

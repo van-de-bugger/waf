@@ -5,7 +5,7 @@
 
 import re
 from waflib import Task, Logs
-from waflib.TaskGen import extension
+from waflib.TaskGen import extension, feature, after_method
 from waflib.Configure import conf
 from waflib.Tools import c_preproc
 
@@ -95,6 +95,7 @@ class swig(Task.Task):
 swig_langs = {}
 def swigf(fun):
 	swig_langs[fun.__name__.replace('swig_', '')] = fun
+	return fun
 swig.swigf = swigf
 
 def swig_c(self):
@@ -160,17 +161,64 @@ def i_file(self, node):
 		outdir.mkdir()
 		tsk.outdir = outdir
 
-@conf
-def check_swig_version(self):
-	"""Returns a tuple representing the swig version, like (1,3,28)"""
-	reg_swig = re.compile(r'SWIG Version\s(.*)', re.M)
-	swig_out = self.cmd_and_log(self.env.SWIG + ['-version'])
+@feature('c', 'cxx', 'd', 'fc', 'asm')
+@after_method('apply_link', 'process_source')
+def enforce_swig_before_link(self):
+	try:
+		link_task = self.link_task
+	except AttributeError:
+		pass
+	else:
+		for x in self.tasks:
+			if x.__class__.__name__ == 'swig':
+				link_task.run_after.add(x)
 
-	swigver = tuple([int(s) for s in reg_swig.findall(swig_out)[0].split('.')])
-	self.env['SWIG_VERSION'] = swigver
-	msg = 'Checking for swig version'
-	self.msg(msg, '.'.join(map(str, swigver)))
-	return swigver
+@conf
+def check_swig_version(conf, minver=None):
+	"""
+	Check if the swig tool is found matching a given minimum version.
+	minver should be a tuple, eg. to check for swig >= 1.3.28 pass (1,3,28) as minver.
+
+	If successful, SWIG_VERSION is defined as 'MAJOR.MINOR'
+	(eg. '1.3') of the actual swig version found.
+
+	:param minver: minimum version
+	:type minver: tuple of int
+	:return: swig version
+	:rtype: tuple of int
+	"""
+	assert minver is None or isinstance(minver, tuple)
+	swigbin = conf.env['SWIG']
+	if not swigbin:
+		conf.fatal('could not find the swig executable')
+
+	# Get swig version string
+	cmd = swigbin + ['-version']
+	Logs.debug('swig: Running swig command %r', cmd)
+	reg_swig = re.compile(r'SWIG Version\s(.*)', re.M)
+	swig_out = conf.cmd_and_log(cmd)
+	swigver_tuple = tuple([int(s) for s in reg_swig.findall(swig_out)[0].split('.')])
+
+	# Compare swig version with the minimum required
+	result = (minver is None) or (swigver_tuple >= minver)
+
+	if result:
+		# Define useful environment variables
+		swigver = '.'.join([str(x) for x in swigver_tuple[:2]])
+		conf.env['SWIG_VERSION'] = swigver
+
+	# Feedback
+	swigver_full = '.'.join(map(str, swigver_tuple[:3]))
+	if minver is None:
+		conf.msg('Checking for swig version', swigver_full)
+	else:
+		minver_str = '.'.join(map(str, minver))
+		conf.msg('Checking for swig version >= %s' % (minver_str,), swigver_full, color=result and 'GREEN' or 'YELLOW')
+
+	if not result:
+		conf.fatal('The swig version is too old, expecting %r' % (minver,))
+
+	return swigver_tuple
 
 def configure(conf):
 	conf.find_program('swig', var='SWIG')

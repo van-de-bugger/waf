@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy, 2006-2010 (ita)
+# Thomas Nagy, 2006-2016 (ita)
 
 """
 Java support
@@ -33,7 +33,6 @@ from waflib.TaskGen import feature, before_method, after_method
 
 from waflib.Tools import ccroot
 ccroot.USELIB_VARS['javac'] = set(['CLASSPATH', 'JAVACFLAGS'])
-
 
 SOURCE_RE = '**/*.java'
 JAR_RE = '**/*'
@@ -77,7 +76,7 @@ def apply_java(self):
 		outdir = self.path.get_bld()
 	outdir.mkdir()
 	self.outdir = outdir
-	self.env['OUTDIR'] = outdir.abspath()
+	self.env.OUTDIR = outdir.abspath()
 
 	self.javac_task = tsk = self.create_task('javac')
 	tmp = []
@@ -96,7 +95,7 @@ def apply_java(self):
 	tsk.srcdir = tmp
 
 	if getattr(self, 'compat', None):
-		tsk.env.append_value('JAVACFLAGS', ['-source', self.compat])
+		tsk.env.append_value('JAVACFLAGS', ['-source', str(self.compat)])
 
 	if hasattr(self, 'sourcepath'):
 		fold = [isinstance(x, Node.Node) and x or self.path.find_dir(x) for x in self.to_list(self.sourcepath)]
@@ -108,10 +107,11 @@ def apply_java(self):
 		tsk.env.append_value('JAVACFLAGS', ['-sourcepath', names])
 
 @feature('javac')
+@before_method('propagate_uselib_vars')
 @after_method('apply_java')
 def use_javac_files(self):
 	"""
-	Process the *use* attribute referring to other java compilations
+	Processes the *use* attribute referring to other java compilations
 	"""
 	lst = []
 	self.uselib = self.to_list(getattr(self, 'uselib', []))
@@ -120,7 +120,7 @@ def use_javac_files(self):
 	for x in names:
 		try:
 			y = get(x)
-		except Exception:
+		except Errors.WafError:
 			self.uselib.append(x)
 		else:
 			y.post()
@@ -130,14 +130,13 @@ def use_javac_files(self):
 			else:
 				for tsk in y.tasks:
 					self.javac_task.set_run_after(tsk)
-	if lst:
-		self.env.append_value('CLASSPATH', lst)
+	self.env.append_value('CLASSPATH', lst)
 
 @feature('javac')
 @after_method('apply_java', 'propagate_uselib_vars', 'use_javac_files')
 def set_classpath(self):
 	"""
-	Set the CLASSPATH value on the *javac* task previously created.
+	Sets the CLASSPATH value on the *javac* task previously created.
 	"""
 	self.env.append_value('CLASSPATH', getattr(self, 'classpath', []))
 	for x in self.tasks:
@@ -148,7 +147,7 @@ def set_classpath(self):
 @before_method('process_source')
 def jar_files(self):
 	"""
-	Create a jar task. There can be only one jar task by task generator.
+	Creates a jar task (one maximum per task generator)
 	"""
 	destfile = getattr(self, 'destfile', 'test.jar')
 	jaropts = getattr(self, 'jaropts', [])
@@ -185,8 +184,8 @@ def jar_files(self):
 	jaropts.append(basedir.bldpath())
 	jaropts.append('.')
 
-	tsk.env['JAROPTS'] = jaropts
-	tsk.env['JARCREATE'] = jarcreate
+	tsk.env.JAROPTS = jaropts
+	tsk.env.JARCREATE = jarcreate
 
 	if getattr(self, 'javac_task', None):
 		tsk.set_run_after(self.javac_task)
@@ -195,7 +194,7 @@ def jar_files(self):
 @after_method('jar_files')
 def use_jar_files(self):
 	"""
-	Process the *use* attribute to set the build order on the
+	Processes the *use* attribute to set the build order on the
 	tasks created by another task generator.
 	"""
 	self.uselib = self.to_list(getattr(self, 'uselib', []))
@@ -204,13 +203,16 @@ def use_jar_files(self):
 	for x in names:
 		try:
 			y = get(x)
-		except Exception:
+		except Errors.WafError:
 			self.uselib.append(x)
 		else:
 			y.post()
 			self.jar_task.run_after.update(y.tasks)
 
 class JTask(Task.Task):
+	"""
+	Base class for java and jar tasks; provides functionality to run long commands
+	"""
 	def split_argfile(self, cmd):
 		inline = [cmd[0]]
 		infile = []
@@ -224,7 +226,7 @@ class JTask(Task.Task):
 
 class jar_create(JTask):
 	"""
-	Create a jar file
+	Creates a jar file
 	"""
 	color   = 'GREEN'
 	run_str = '${JAR} ${JARCREATE} ${TGT} ${JAROPTS}'
@@ -247,7 +249,7 @@ class jar_create(JTask):
 
 class javac(JTask):
 	"""
-	Compile java files
+	Compiles java files
 	"""
 	color   = 'BLUE'
 	run_str = '${JAVAC} -classpath ${CLASSPATH} -d ${OUTDIR} ${JAVACFLAGS} ${SRC}'
@@ -264,7 +266,7 @@ class javac(JTask):
 
 	def runnable_status(self):
 		"""
-		Wait for dependent tasks to be complete, then read the file system to find the input nodes.
+		Waits for dependent tasks to be complete, then read the file system to find the input nodes.
 		"""
 		for t in self.run_after:
 			if not t.hasrun:
@@ -279,6 +281,7 @@ class javac(JTask):
 
 	def post_run(self):
 		"""
+		List class files created
 		"""
 		for node in self.generator.outdir.ant_glob('**/*.class'):
 			self.generator.bld.node_sigs[node] = self.uid()
@@ -297,6 +300,9 @@ def create_javadoc(self):
 		self.javadoc_output = self.bld.path.find_or_declare(self.javadoc_output)
 
 class javadoc(Task.Task):
+	"""
+	Builds java documentation
+	"""
 	color = 'BLUE'
 
 	def __str__(self):
@@ -318,7 +324,7 @@ class javadoc(Task.Task):
 		classpath = "".join(classpath)
 
 		self.last_cmd = lst = []
-		lst.extend(Utils.to_list(env['JAVADOC']))
+		lst.extend(Utils.to_list(env.JAVADOC))
 		lst.extend(['-d', self.generator.javadoc_output.abspath()])
 		lst.extend(['-sourcepath', srcpath])
 		lst.extend(['-classpath', classpath])
@@ -336,7 +342,7 @@ class javadoc(Task.Task):
 
 def configure(self):
 	"""
-	Detect the javac, java and jar programs
+	Detects the javac, java and jar programs
 	"""
 	# If JAVA_PATH is set, we prepend it to the path list
 	java_path = self.environ['PATH'].split(os.pathsep)
@@ -344,36 +350,37 @@ def configure(self):
 
 	if 'JAVA_HOME' in self.environ:
 		java_path = [os.path.join(self.environ['JAVA_HOME'], 'bin')] + java_path
-		self.env['JAVA_HOME'] = [self.environ['JAVA_HOME']]
+		self.env.JAVA_HOME = [self.environ['JAVA_HOME']]
 
 	for x in 'javac java jar javadoc'.split():
 		self.find_program(x, var=x.upper(), path_list=java_path)
 
 	if 'CLASSPATH' in self.environ:
-		v['CLASSPATH'] = self.environ['CLASSPATH']
+		v.CLASSPATH = self.environ['CLASSPATH']
 
-	if not v['JAR']: self.fatal('jar is required for making java packages')
-	if not v['JAVAC']: self.fatal('javac is required for compiling java classes')
+	if not v.JAR:
+		self.fatal('jar is required for making java packages')
+	if not v.JAVAC:
+		self.fatal('javac is required for compiling java classes')
 
-	v['JARCREATE'] = 'cf' # can use cvf
-	v['JAVACFLAGS'] = []
+	v.JARCREATE = 'cf' # can use cvf
+	v.JAVACFLAGS = []
 
 @conf
 def check_java_class(self, classname, with_classpath=None):
 	"""
-	Check if the specified java class exists
+	Checks if the specified java class exists
 
 	:param classname: class to check, like java.util.HashMap
 	:type classname: string
 	:param with_classpath: additional classpath to give
 	:type with_classpath: string
 	"""
-
 	javatestdir = '.waf-javatest'
 
 	classpath = javatestdir
-	if self.env['CLASSPATH']:
-		classpath += os.pathsep + self.env['CLASSPATH']
+	if self.env.CLASSPATH:
+		classpath += os.pathsep + self.env.CLASSPATH
 	if isinstance(with_classpath, str):
 		classpath += os.pathsep + with_classpath
 
@@ -383,10 +390,10 @@ def check_java_class(self, classname, with_classpath=None):
 	Utils.writef(os.path.join(javatestdir, 'Test.java'), class_check_source)
 
 	# Compile the source
-	self.exec_command(self.env['JAVAC'] + [os.path.join(javatestdir, 'Test.java')], shell=False)
+	self.exec_command(self.env.JAVAC + [os.path.join(javatestdir, 'Test.java')], shell=False)
 
 	# Try to run the app
-	cmd = self.env['JAVA'] + ['-cp', classpath, 'Test', classname]
+	cmd = self.env.JAVA + ['-cp', classpath, 'Test', classname]
 	self.to_log("%s\n" % str(cmd))
 	found = self.exec_command(cmd, shell=False)
 
@@ -399,7 +406,7 @@ def check_java_class(self, classname, with_classpath=None):
 @conf
 def check_jni_headers(conf):
 	"""
-	Check for jni headers and libraries. On success the conf.env variables xxx_JAVA are added for use in C/C++ targets::
+	Checks for jni headers and libraries. On success the conf.env variables xxx_JAVA are added for use in C/C++ targets::
 
 		def options(opt):
 			opt.load('compiler_c')
@@ -411,7 +418,6 @@ def check_jni_headers(conf):
 		def build(bld):
 			bld.shlib(source='a.c', target='app', use='JAVA')
 	"""
-
 	if not conf.env.CC_NAME and not conf.env.CXX_NAME:
 		conf.fatal('load a compiler first (gcc, g++, ..)')
 
@@ -419,7 +425,7 @@ def check_jni_headers(conf):
 		conf.fatal('set JAVA_HOME in the system environment')
 
 	# jni requires the jvm
-	javaHome = conf.env['JAVA_HOME'][0]
+	javaHome = conf.env.JAVA_HOME[0]
 
 	dir = conf.root.find_dir(conf.env.JAVA_HOME[0] + '/include')
 	if dir is None:
@@ -452,5 +458,4 @@ def check_jni_headers(conf):
 			break
 	else:
 		conf.fatal('could not find lib jvm in %r (see config.log)' % libDirs)
-
 

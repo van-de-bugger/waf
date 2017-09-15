@@ -1,15 +1,15 @@
 #! /usr/bin/env python
 # encoding: utf-8
 # DC 2008
-# Thomas Nagy 2010 (ita)
+# Thomas Nagy 2016 (ita)
 
 """
-fortran support
+Fortran support
 """
 
-from waflib import Utils, Task, Logs
+from waflib import Utils, Task
 from waflib.Tools import ccroot, fc_config, fc_scan
-from waflib.TaskGen import feature, extension
+from waflib.TaskGen import extension
 from waflib.Configure import conf
 
 ccroot.USELIB_VARS['fc'] = set(['FCFLAGS', 'DEFINES', 'INCLUDES', 'FCPPFLAGS'])
@@ -17,26 +17,28 @@ ccroot.USELIB_VARS['fcprogram_test'] = ccroot.USELIB_VARS['fcprogram'] = set(['L
 ccroot.USELIB_VARS['fcshlib'] = set(['LIB', 'STLIB', 'LIBPATH', 'STLIBPATH', 'LINKFLAGS', 'RPATH', 'LINKDEPS'])
 ccroot.USELIB_VARS['fcstlib'] = set(['ARFLAGS', 'LINKDEPS'])
 
-@extension('.f', '.f90', '.F', '.F90', '.for', '.FOR')
+@extension('.f','.F','.f90','.F90','.for','.FOR','.f95','.F95','.f03','.F03','.f08','.F08')
 def fc_hook(self, node):
-	"Bind the typical Fortran file extensions to the creation of a :py:class:`waflib.Tools.fc.fc` instance"
+	"Binds the Fortran file extensions create :py:class:`waflib.Tools.fc.fc` instances"
 	return self.create_compiled_task('fc', node)
 
 @conf
 def modfile(conf, name):
 	"""
-	Turn a module name into the right module file name.
+	Turns a module name into the right module file name.
 	Defaults to all lower case.
 	"""
 	return {'lower'     :name.lower() + '.mod',
-		'lower.MOD' :name.upper() + '.MOD',
+		'lower.MOD' :name.lower() + '.MOD',
 		'UPPER.mod' :name.upper() + '.mod',
 		'UPPER'     :name.upper() + '.MOD'}[conf.env.FC_MOD_CAPITALIZATION or 'lower']
 
 def get_fortran_tasks(tsk):
 	"""
-	Obtain all other fortran tasks from the same build group. Those tasks must not have
+	Obtains all fortran tasks from the same build group. Those tasks must not have
 	the attribute 'nomod' or 'mod_fortran_done'
+
+	:return: a list of :py:class:`waflib.Tools.fc.fc` instances
 	"""
 	bld = tsk.generator.bld
 	tasks = bld.get_tasks_group(bld.get_group_idx(tsk.generator))
@@ -44,17 +46,16 @@ def get_fortran_tasks(tsk):
 
 class fc(Task.Task):
 	"""
-	The fortran tasks can only run when all fortran tasks in the current group are ready to be executed
-	This may cause a deadlock if another fortran task is waiting for something that cannot happen (circular dependency)
-	in this case, set the 'nomod=True' on those tasks instances to break the loop
+	Fortran tasks can only run when all fortran tasks in the current group are ready to be executed
+	This may cause a deadlock if some fortran task is waiting for something that cannot happen (circular dependency)
+	Should this ever happen, set the 'nomod=True' on those tasks instances to break the loop
 	"""
-
 	color = 'GREEN'
 	run_str = '${FC} ${FCFLAGS} ${FCINCPATH_ST:INCPATHS} ${FCDEFINES_ST:DEFINES} ${_FCMODOUTFLAGS} ${FC_TGT_F}${TGT[0].abspath()} ${FC_SRC_F}${SRC[0].abspath()} ${FCPPFLAGS}'
 	vars = ["FORTRANMODPATHFLAG"]
 
 	def scan(self):
-		"""scanner for fortran dependencies"""
+		"""Fortran dependency scanner"""
 		tmp = fc_scan.fortran_parser(self.generator.includes_nodes)
 		tmp.task = self
 		tmp.start(self.inputs[0])
@@ -62,7 +63,7 @@ class fc(Task.Task):
 
 	def runnable_status(self):
 		"""
-		Set the mod file outputs and the dependencies on the mod files over all the fortran tasks
+		Sets the mod file outputs and the dependencies on the mod files over all Fortran tasks
 		executed by the main thread so there are no concurrency issues
 		"""
 		if getattr(self, 'mod_fortran_done', None):
@@ -140,17 +141,21 @@ class fc(Task.Task):
 		return super(fc, self).runnable_status()
 
 class fcprogram(ccroot.link_task):
-	"""Link fortran programs"""
+	"""Links Fortran programs"""
 	color = 'YELLOW'
 	run_str = '${FC} ${LINKFLAGS} ${FCLNK_SRC_F}${SRC} ${FCLNK_TGT_F}${TGT[0].abspath()} ${RPATH_ST:RPATH} ${FCSTLIB_MARKER} ${FCSTLIBPATH_ST:STLIBPATH} ${FCSTLIB_ST:STLIB} ${FCSHLIB_MARKER} ${FCLIBPATH_ST:LIBPATH} ${FCLIB_ST:LIB} ${LDFLAGS}'
 	inst_to = '${BINDIR}'
 
 class fcshlib(fcprogram):
-	"""Link fortran libraries"""
+	"""Links Fortran libraries"""
 	inst_to = '${LIBDIR}'
 
+class fcstlib(ccroot.stlink_task):
+	"""Links Fortran static libraries (uses ar by default)"""
+	pass # do not remove the pass statement
+
 class fcprogram_test(fcprogram):
-	"""Custom link task to obtain the compiler outputs for fortran configuration tests"""
+	"""Custom link task to obtain compiler outputs for Fortran configuration tests"""
 
 	def runnable_status(self):
 		"""This task is always executed"""
@@ -160,7 +165,7 @@ class fcprogram_test(fcprogram):
 		return ret
 
 	def exec_command(self, cmd, **kw):
-		"""Store the compiler std our/err onto the build context, to bld.out + bld.err"""
+		"""Stores the compiler std our/err onto the build context, to bld.out + bld.err"""
 		bld = self.generator.bld
 
 		kw['shell'] = isinstance(cmd, str)
@@ -177,11 +182,7 @@ class fcprogram_test(fcprogram):
 			return -1
 
 		if bld.out:
-			bld.to_log("out: %s\n" % bld.out)
+			bld.to_log('out: %s\n' % bld.out)
 		if bld.err:
-			bld.to_log("err: %s\n" % bld.err)
-
-class fcstlib(ccroot.stlink_task):
-	"""Link fortran static libraries (uses ar by default)"""
-	pass # do not remove the pass statement
+			bld.to_log('err: %s\n' % bld.err)
 

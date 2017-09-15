@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy, 2005-2010 (ita)
+# Thomas Nagy, 2005-2016 (ita)
 
 """
 
 ConfigSet: a special dict
 
-The values put in :py:class:`ConfigSet` must be lists
+The values put in :py:class:`ConfigSet` must be serializable (dicts, lists, strings)
 """
 
 import copy, re, os
@@ -39,17 +39,20 @@ class ConfigSet(object):
 
 	def __contains__(self, key):
 		"""
-		Enable the *in* syntax::
+		Enables the *in* syntax::
 
 			if 'foo' in env:
 				print(env['foo'])
 		"""
-		if key in self.table: return True
-		try: return self.parent.__contains__(key)
-		except AttributeError: return False # parent may not exist
+		if key in self.table:
+			return True
+		try:
+			return self.parent.__contains__(key)
+		except AttributeError:
+			return False # parent may not exist
 
 	def keys(self):
-		"""Dict interface (unknown purpose)"""
+		"""Dict interface"""
 		keys = set()
 		cur = self
 		while cur:
@@ -85,13 +88,13 @@ class ConfigSet(object):
 
 	def __setitem__(self, key, value):
 		"""
-		Dictionary interface: get value from key
+		Dictionary interface: set value for key
 		"""
 		self.table[key] = value
 
 	def __delitem__(self, key):
 		"""
-		Dictionary interface: get value from key
+		Dictionary interface: mark the key as missing
 		"""
 		self[key] = []
 
@@ -155,7 +158,7 @@ class ConfigSet(object):
 
 	def detach(self):
 		"""
-		Detach self from its parent (if existing)
+		Detaches this instance from its parent (if present)
 
 		Modifying the parent :py:class:`ConfigSet` will not change the current object
 		Modifying this :py:class:`ConfigSet` will not modify the parent one.
@@ -174,18 +177,19 @@ class ConfigSet(object):
 
 	def get_flat(self, key):
 		"""
-		Return a value as a string. If the input is a list, the value returned is space-separated.
+		Returns a value as a string. If the input is a list, the value returned is space-separated.
 
 		:param key: key to use
 		:type key: string
 		"""
 		s = self[key]
-		if isinstance(s, str): return s
+		if isinstance(s, str):
+			return s
 		return ' '.join(s)
 
 	def _get_list_value_for_modification(self, key):
 		"""
-		Return a list value for further modification.
+		Returns a list value for further modification.
 
 		The list may be modified inplace and there is no need to do this afterwards::
 
@@ -239,7 +243,7 @@ class ConfigSet(object):
 
 	def append_unique(self, var, val):
 		"""
-		Append a value to the specified item only if it's not already present::
+		Appends a value to the specified item only if it's not already present::
 
 			def build(bld):
 				bld.env.append_unique('CFLAGS', ['-O2', '-g'])
@@ -256,7 +260,7 @@ class ConfigSet(object):
 
 	def get_merged_dict(self):
 		"""
-		Compute the merged dictionary from the fusion of self and all its parent
+		Computes the merged dictionary from the fusion of self and all its parent
 
 		:rtype: a ConfigSet object
 		"""
@@ -264,8 +268,10 @@ class ConfigSet(object):
 		env = self
 		while 1:
 			table_list.insert(0, env.table)
-			try: env = env.parent
-			except AttributeError: break
+			try:
+				env = env.parent
+			except AttributeError:
+				break
 		merged_table = {}
 		for table in table_list:
 			merged_table.update(table)
@@ -273,7 +279,7 @@ class ConfigSet(object):
 
 	def store(self, filename):
 		"""
-		Write the :py:class:`ConfigSet` data into a file. See :py:meth:`ConfigSet.load` for reading such files.
+		Serializes the :py:class:`ConfigSet` data to a file. See :py:meth:`ConfigSet.load` for reading such files.
 
 		:param filename: file to use
 		:type filename: string
@@ -300,7 +306,7 @@ class ConfigSet(object):
 
 	def load(self, filename):
 		"""
-		Retrieve the :py:class:`ConfigSet` data from a file. See :py:meth:`ConfigSet.store` for writing such files
+		Restores contents from a file (current values are not cleared). Files are written using :py:meth:`ConfigSet.store`.
 
 		:param filename: file to use
 		:type filename: string
@@ -314,7 +320,7 @@ class ConfigSet(object):
 
 	def update(self, d):
 		"""
-		Dictionary interface: replace values from another dict
+		Dictionary interface: replace values with the ones from another dict
 
 		:param d: object to use the value from
 		:type d: dict-like object
@@ -323,7 +329,7 @@ class ConfigSet(object):
 
 	def stash(self):
 		"""
-		Store the object state, to provide a kind of transaction support::
+		Stores the object state to provide transactionality semantics::
 
 			env = ConfigSet()
 			env.stash()

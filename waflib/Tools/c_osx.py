@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy 2008-2010
+# Thomas Nagy 2008-2016 (ita)
 
 """
 MacOSX related tools
 """
 
 import os, shutil, platform
-from waflib import Task, Utils, Errors
+from waflib import Task, Utils
 from waflib.TaskGen import taskgen_method, feature, after_method, before_method
 
 app_info = '''
@@ -37,8 +37,8 @@ def set_macosx_deployment_target(self):
 	"""
 	see WAF issue 285 and also and also http://trac.macports.org/ticket/17059
 	"""
-	if self.env['MACOSX_DEPLOYMENT_TARGET']:
-		os.environ['MACOSX_DEPLOYMENT_TARGET'] = self.env['MACOSX_DEPLOYMENT_TARGET']
+	if self.env.MACOSX_DEPLOYMENT_TARGET:
+		os.environ['MACOSX_DEPLOYMENT_TARGET'] = self.env.MACOSX_DEPLOYMENT_TARGET
 	elif 'MACOSX_DEPLOYMENT_TARGET' not in os.environ:
 		if Utils.unversioned_sys_platform() == 'darwin':
 			os.environ['MACOSX_DEPLOYMENT_TARGET'] = '.'.join(platform.mac_ver()[0].split('.')[:2])
@@ -46,7 +46,7 @@ def set_macosx_deployment_target(self):
 @taskgen_method
 def create_bundle_dirs(self, name, out):
 	"""
-	Create bundle folders, used by :py:func:`create_task_macplist` and :py:func:`create_task_macapp`
+	Creates bundle folders, used by :py:func:`create_task_macplist` and :py:func:`create_task_macapp`
 	"""
 	dir = out.parent.find_or_declare(name)
 	dir.mkdir()
@@ -78,7 +78,7 @@ def create_task_macapp(self):
 			bld.env.MACAPP = True
 			bld.shlib(source='a.c', target='foo')
 	"""
-	if self.env['MACAPP'] or getattr(self, 'mac_app', False):
+	if self.env.MACAPP or getattr(self, 'mac_app', False):
 		out = self.link_task.outputs[0]
 
 		name = bundle_name_for_output(out)
@@ -102,7 +102,7 @@ def create_task_macapp(self):
 			for node in self.to_nodes(self.mac_files):
 				relpath = node.path_from(mac_files_root or node.parent)
 				self.create_task('macapp', node, res_dir.make_node(relpath))
-				self.add_install_as(install_to=os.path.join(inst_to, relpath), install_source=node)
+				self.add_install_as(install_to=os.path.join(inst_to, relpath), install_from=node)
 
 		if getattr(self.bld, 'is_install', None):
 			# disable regular binary installation
@@ -112,9 +112,9 @@ def create_task_macapp(self):
 @after_method('apply_link')
 def create_task_macplist(self):
 	"""
-	Create a :py:class:`waflib.Tools.c_osx.macplist` instance.
+	Creates a :py:class:`waflib.Tools.c_osx.macplist` instance.
 	"""
-	if  self.env['MACAPP'] or getattr(self, 'mac_app', False):
+	if  self.env.MACAPP or getattr(self, 'mac_app', False):
 		out = self.link_task.outputs[0]
 
 		name = bundle_name_for_output(out)
@@ -158,9 +158,9 @@ def apply_bundle(self):
 			bld.env.MACBUNDLE = True
 			bld.shlib(source='a.c', target='foo')
 	"""
-	if self.env['MACBUNDLE'] or getattr(self, 'mac_bundle', False):
-		self.env['LINKFLAGS_cshlib'] = self.env['LINKFLAGS_cxxshlib'] = [] # disable the '-dynamiclib' flag
-		self.env['cshlib_PATTERN'] = self.env['cxxshlib_PATTERN'] = self.env['macbundle_PATTERN']
+	if self.env.MACBUNDLE or getattr(self, 'mac_bundle', False):
+		self.env.LINKFLAGS_cshlib = self.env.LINKFLAGS_cxxshlib = [] # disable the '-dynamiclib' flag
+		self.env.cshlib_PATTERN = self.env.cxxshlib_PATTERN = self.env.macbundle_PATTERN
 		use = self.use = self.to_list(getattr(self, 'use', []))
 		if not 'MACBUNDLE' in use:
 			use.append('MACBUNDLE')
@@ -169,7 +169,7 @@ app_dirs = ['Contents', 'Contents/MacOS', 'Contents/Resources']
 
 class macapp(Task.Task):
 	"""
-	Create mac applications
+	Creates mac applications
 	"""
 	color = 'PINK'
 	def run(self):
@@ -178,7 +178,7 @@ class macapp(Task.Task):
 
 class macplist(Task.Task):
 	"""
-	Create plist files
+	Creates plist files
 	"""
 	color = 'PINK'
 	ext_in = ['.bin']
@@ -190,3 +190,4 @@ class macplist(Task.Task):
 		context = getattr(self, 'context', {})
 		txt = txt.format(**context)
 		self.outputs[0].write(txt)
+
