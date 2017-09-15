@@ -2,6 +2,7 @@
 # encoding: latin-1
 # Thomas Nagy, 2005-2017
 #
+raise ValueError('Waf 2.0 is now on the master branch!')
 """
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
