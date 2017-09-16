@@ -1,3 +1,11 @@
+NEW IN WAF 1.9.14
+-----------------
+* Fix Configure.autoconfig='clobber' when no previous configuration is present
+* Backport old gfortran compiler detection
+* Protobuf to output python files #2028
+* Protobuf fixes #2009
+* Improve symbol processing in the syms.py example
+
 NEW IN WAF 1.9.13
 -----------------
 * Fix a regression introduced by #1974 on Python2 with unicode characters in config.log
