@@ -12,8 +12,8 @@ def configure(ctx):
 def build(ctx):
 	from waflib import Task
 	class copy(Task.Task):
+		always_run = True
 		run_str = 'cp ${SRC} ${TGT}'
-	copy = Task.always_run(copy)
 
 	tsk = copy(env=ctx.env)
 	tsk.set_inputs(ctx.path.find_resource('wscript'))

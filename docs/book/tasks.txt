@@ -563,7 +563,7 @@ NOTE: Chaining is also possible through subclassing.
 
 ===== Always execute
 
-The function 'waflib.Task.always_run' is used to force a task to be executed whenever a build is performed. It sets a method 'runnable_status' that always return _RUN_ME_.
+The attribute 'waflib.Task.always_run' may be used to force a task to be executed whenever a build is performed. The Task method 'runnable_status' is made to return _RUN_ME_.
 
 // task_always
 [source,python]
@@ -574,8 +574,8 @@ def configure(ctx):
 def build(ctx):
     from waflib import Task
     class copy(Task.Task):
+        always_run = True
         run_str = 'cp ${SRC} ${TGT}'
-    copy = waflib.Task.always_run(copy)
 
     tsk = copy(env=ctx.env)
     tsk.set_inputs(ctx.path.find_resource('wscript'))
