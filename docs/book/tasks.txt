@@ -201,43 +201,6 @@ The two functions called on lists of tasks are:
 . _waflib.Task.set_precedence_constraints_: extract the build order from the task classes attributes ext_in/ext_out/before/after
 . _waflib.Task.set_file_constraints_: extract the constraints from the tasks having input and output files
 
-==== Weak order constraints
-
-Tasks that are known to take a lot of time may be launched first to improve the build times. The general problem of finding an optimal order for launching tasks in parallel and with constraints is called http://en.wikipedia.org/wiki/Job-shop_problem[Job Shop]. In practice this problem can often be reduced to a critical path problem (approximation).
-
-The following pictures illustrate the difference in scheduling a build with different independent tasks, in which a slow task is clearly identified, and launched first:
-
-[source,python]
----------------
-def build(ctx):
-    for x in range(5):
-        ctx(rule='sleep 1', color='GREEN', name='short task')
-    ctx(rule='sleep 5', color='RED', name='long task')
----------------
-
-image::tasks_nosort{PIC}["No particular order"{backend@docbook:,width=440:},align="center"]
-
-A function is used to reorder the tasks from a group before they are passed to the producer. We will replace it to reorder the long task in first position:
-
-// tasks_weak
-[source,python]
----------------
-from waflib import Task
-old = Task.set_file_constraints
-def meth(lst):
-    lst.sort(cmp=lambda x, y: cmp(x.__class__.__name__, y.__class__.__name__)) <1>
-    old(lst) <2>
-Task.set_file_constraints = meth <3>
----------------
-
-<1> Set the long task in first position
-<2> Execute the original code
-<3> Replace the method
-
-Here is a representation of the effect:
-
-image::tasks_sort{PIC}["Slowest task first"{backend@docbook:,width=440:},align="center"]
-
 === Dependencies
 
 ==== Task signatures
