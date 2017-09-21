@@ -33,6 +33,8 @@ def check_same_targets(self):
 	def check_task(tsk):
 		if not isinstance(tsk, Task.Task):
 			return
+		if hasattr(tsk, 'no_errcheck_out'):
+			return
 
 		for node in tsk.outputs:
 			mp[node].append(tsk)
@@ -61,22 +63,26 @@ def check_same_targets(self):
 					Logs.error('  %d. %r', 1 + v.index(x), x.generator)
 				else:
 					Logs.error('  %d. %r in %r', 1 + v.index(x), x.generator.name, getattr(x.generator, 'path', None))
+			Logs.error('If you think that this is an error, set no_errcheck_out on the task instance')
 
 	if not dupe:
 		for (k, v) in uids.items():
 			if len(v) > 1:
 				Logs.error('* Several tasks use the same identifier. Please check the information on\n   https://waf.io/apidocs/Task.html?highlight=uid#waflib.Task.Task.uid')
+				tg_details = tsk.generator.name
+				if Logs.verbose > 2:
+					tg_details = tsk.generator
 				for tsk in v:
-					Logs.error('  - object %r (%r) defined in %r', tsk.__class__.__name__, tsk, tsk.generator)
+					Logs.error('  - object %r (%r) defined in %r', tsk.__class__.__name__, tsk, tg_details)
 
 def check_invalid_constraints(self):
-	feat = set([])
+	feat = set()
 	for x in list(TaskGen.feats.values()):
 		feat.union(set(x))
 	for (x, y) in TaskGen.task_gen.prec.items():
 		feat.add(x)
 		feat.union(set(y))
-	ext = set([])
+	ext = set()
 	for x in TaskGen.task_gen.mappings.values():
 		ext.add(x.__name__)
 	invalid = ext & feat
@@ -123,11 +129,14 @@ def enhance_lib():
 		if k:
 			lst = Utils.to_list(k[0])
 			for pat in lst:
-				if '..' in pat.split('/'):
+				sp = pat.split('/')
+				if '..' in sp:
 					Logs.error("In ant_glob pattern %r: '..' means 'two dots', not 'parent directory'", k[0])
+				if '.' in sp:
+					Logs.error("In ant_glob pattern %r: '.' means 'one dot', not 'current directory'", k[0])
 		if kw.get('remove', True):
 			try:
-				if self.is_child_of(self.ctx.bldnode) and not kw.get('quiet', False):
+				if self.is_child_of(self.ctx.bldnode) and not kw.get('quiet'):
 					Logs.error('Using ant_glob on the build folder (%r) is dangerous (quiet=True to disable this warning)', self)
 			except AttributeError:
 				pass
@@ -164,7 +173,7 @@ def enhance_lib():
 		else:
 			for x in ('before', 'after'):
 				for y in self.to_list(getattr(self, x, [])):
-					if not Task.classes.get(y, None):
+					if not Task.classes.get(y):
 						Logs.error('Erroneous order constraint %s=%r on %r (no such class)', x, y, self)
 	TaskGen.feature('*')(check_err_order)
 
@@ -206,7 +215,7 @@ def enhance_lib():
 		elif name == 'prepend':
 			raise Errors.WafError('env.prepend does not exist: use env.prepend_value')
 		if name in self.__slots__:
-			return object.__getattr__(self, name, default)
+			return super(ConfigSet.ConfigSet, self).__getattr__(name, default)
 		else:
 			return self[name]
 	ConfigSet.ConfigSet.__getattr__ = _getattr

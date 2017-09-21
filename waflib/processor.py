@@ -1,8 +1,8 @@
 #! /usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy, 2016 (ita)
+# Thomas Nagy, 2016-2017 (ita)
 
-import sys, traceback, base64
+import os, sys, traceback, base64, signal
 try:
 	import cPickle
 except ImportError:
@@ -12,6 +12,12 @@ try:
 	import subprocess32 as subprocess
 except ImportError:
 	import subprocess
+
+try:
+	TimeoutExpired = subprocess.TimeoutExpired
+except AttributeError:
+	class TimeoutExpired(Exception):
+		pass
 
 def run():
 	txt = sys.stdin.readline().strip()
@@ -25,9 +31,19 @@ def run():
 	out, err, ex, trace = (None, None, None, None)
 	try:
 		proc = subprocess.Popen(cmd, **kwargs)
-		out, err = proc.communicate(**cargs)
+		try:
+			out, err = proc.communicate(**cargs)
+		except TimeoutExpired:
+			if kwargs.get('start_new_session') and hasattr(os, 'killpg'):
+				os.killpg(proc.pid, signal.SIGKILL)
+			else:
+				proc.kill()
+			out, err = proc.communicate()
+			exc = TimeoutExpired(proc.args, timeout=cargs['timeout'], output=out)
+			exc.stderr = err
+			raise exc
 		ret = proc.returncode
-	except (OSError, ValueError, Exception) as e:
+	except Exception as e:
 		exc_type, exc_value, tb = sys.exc_info()
 		exc_lines = traceback.format_exception(exc_type, exc_value, tb)
 		trace = str(cmd) + '\n' + ''.join(exc_lines)

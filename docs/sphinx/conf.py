@@ -98,8 +98,7 @@ def before(*k):
 		exclude_taskgen.append(func.__name__)
 		setattr(task_gen, func.__name__, func)
 		for fun_name in k:
-			if not func.__name__ in task_gen.prec[fun_name]:
-				task_gen.prec[fun_name].append(func.__name__)
+			task_gen.prec[func.__name__].add(fun_name)
 		fix_fun_doc(func)
 		append_doc(func, 'before', k)
 		return func
@@ -112,8 +111,7 @@ def after(*k):
 		exclude_taskgen.append(func.__name__)
 		setattr(task_gen, func.__name__, func)
 		for fun_name in k:
-			if not fun_name in task_gen.prec[func.__name__]:
-				task_gen.prec[func.__name__].append(fun_name)
+			task_gen.prec[fun_name].add(func.__name__)
 		fix_fun_doc(func)
 		append_doc(func, 'after', k)
 		return func
@@ -349,7 +347,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Waf'
-copyright = u'2005-2016, Thomas Nagy'
+copyright = u'2005-2017, Thomas Nagy'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
