@@ -63,11 +63,11 @@ def build(ctx):
             color='PINK', name='tasks d')
 ---------------
 
-Now a separator will appear between the group of yellow and green tasks and the group of blue and violet taks:
+Now a separator will appear between the group of yellow and green tasks and the group of blue and violet tasks:
 
 image::tasks_twogroups{PIC}["Two build groups"{backend@docbook:,width=440:},align="center"]
 
-The tasks and tasks generator are added implicitely to the current group. By giving a name to the groups, it is easy to control what goes where:
+The tasks and tasks generator are added implicitly to the current group. By giving a name to the groups, it is easy to control what goes where:
 
 // tasks_groups2
 [source,python]
@@ -110,7 +110,7 @@ Build groups can be used for <<build_compiler_first,building a compiler to gener
 
 ==== The Producer-consumer system
 
-In most python interpreters, a global interpreter lock prevents parallelization by more than one cpu core at a time. Therefore, it makes sense to restrict the task scheduling on a single task producer, and to let the threads access only the task execution.
+In most python interpreters, a global interpreter lock prevents parallelization by more than one CPU core at a time. Therefore, it makes sense to restrict the task scheduling on a single task producer, and to let the threads access only the task execution.
 
 The communication between producer and consumers is based on two queues _ready_ and _out_. The producer adds the tasks to _ready_ and reads them back from _out_. The consumers obtain the tasks from _ready_ and give them back to the producer into _out_ after executing 'task.run'.
 
@@ -130,7 +130,7 @@ A state is assigned to each task (_task.hasrun = state_) to keep track of the ex
 |NOT_RUN  | 0 | The task has not been processed yet
 |MISSING  | 1 | The task outputs are missing
 |CRASHED  | 2 | The task method 'run' returned a non-0 value
-|EXCEPTION| 3 | An exception occured in the Task method 'run'
+|EXCEPTION| 3 | An exception occurred in the Task method 'run'
 |SKIPPED  | 8 | The task was skipped (it was up-to-date)
 |SUCCESS  | 9 | The execution was successful
 |=================
@@ -215,9 +215,10 @@ class some_link_task(Task.Task):
     weight = 3  # default is 0
 ---------------
 
-For tasks having mostly the same tree weight, a second prority level sorts them by order of task generator declaration.
-Besides ensuring that targets then appear mostly in the order of declaration so that tasks of the same type do not get clumped together.
-This is beneficial for spreading resource consumption, so for example link tasks consuming a lot of memory would run at distinct times.
+For tasks having mostly the same tree weight, a second priority level sorts them by order of task generator declaration.
+As an immediate benefit, targets are generated mostly in the order of target declaration
+Besides that, tasks of identical type do not get clumped together, so for example link tasks consuming a lot of memory would run at distinct times.
+This is therefore beneficial for avoiding temporary resource over consumption.
 
 One limitation of this priority system is that it cannot affect tasks already scheduled for execution.
 When the amount of tasks ready to be executed by worker threads is below a certain threshold,
@@ -227,7 +228,7 @@ The threshold value is `njobs * GAP` where `GAP` is a constant:
 [source,python]
 ---------------
 from waflib import Runner
-Runner.GAP = 2  # default is 20
+Runner.GAP = 2  # default is 5
 ---------------
 
 === Dependencies
@@ -555,7 +556,8 @@ NOTE: Chaining is also possible through subclassing.
 
 ===== Always execute
 
-The attribute 'waflib.Task.always_run' may be used to force a task to be executed whenever a build is performed. The Task method 'runnable_status' is made to return _RUN_ME_.
+The attribute 'waflib.Task.always_run' forces a task to be executed whenever a build is performed.
+The Task method 'runnable_status' is then made to simply return _RUN_ME_.
 
 // task_always
 [source,python]
@@ -575,7 +577,7 @@ def build(ctx):
     ctx.add_to_group(tsk)
 ---------------
 
-For convenience, rule-based task generators can declare the *always* attribute to achieve the same results:
+For convenience, rule-based task generators can provide an `always` parameter to achieve the same results:
 
 [source,python]
 ---------------
