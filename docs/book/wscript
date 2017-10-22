@@ -1,9 +1,11 @@
 #! /usr/bin/env python
 # encoding: utf-8
-# Thomas Nagy, 2006-2010 (ita)
+# Thomas Nagy, 2006-2017 (ita)
 
 """
 call 'waf --targets=waf.pdf' or use 'waf list' to see the targets available
+
+waf ; perl -pi -e "s#svgz#svg#" build/index.html ; firefox build/index.html
 """
 
 VERSION='0.0.1'

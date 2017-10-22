@@ -1,11 +1,20 @@
 #! /usr/bin/env python
 
 """
-Illustrate the effect of weak order constraints for the build (generates diagrams)
+Install inkscape and update the diagrams with:
+waf --diag=1 ; waf --diag=2 ; waf --diag=3
 
-waf configure clean build -j2 --dwidth=800 --dtitle='GAP on "waf -j2"' --dmaxtime=15
-waf configure clean build -j2 --dwidth=800 --dtitle='Default constraints on "waf -j2"' --dmaxtime=15
-waf configure clean build -j2 --dwidth=800 --dtitle='Additional constraints on "waf -j2"' --dmaxtime=15
+For parallel execution diagram, the commands are:
+
+rm -rf /tmp/build
+cd $WAFDIR/utils
+./genbench.py /tmp/build 20 7 5 2
+cd /tmp/build
+perl -pi -e "s#opt.load\('compiler_cxx'\)#opt.load('compiler_cxx parallel_debug')#g" wscript
+perl -pi -e "s#stlib#shlib#g" wscript
+echo "from waflib import Runner;Runner.GAP=2" >> wscript
+waf configure clean build -p -j4 --dwidth=800 --dtitle='Parallel build of 20 shared libraries (waf -j4)' --dnotooltip
+inkscape pdebug.svg --export-eps=weak_parallel.eps
 """
 
 from waflib import Task

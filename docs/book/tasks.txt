@@ -229,19 +229,22 @@ image::tasks_sort{PIC}["Slowest task first"{backend@docbook:,width=440:},align="
 
 For task graphs having mostly the same tree weight, a second priority level sorts tasks by order of task generator declaration.
 User scripts can be optimized to interrupt the build early in case of typical failures (syntax errors, unit tests, etc).
-In addition, tasks of identical types do not get clumped together; for example large link tasks
-can run at distinct times and therefore avoid system memory overconsumption.
+In addition, execution of similar task types is evenly spread out.
+As a result, clusters of slow link tasks are less likely to occur at the end of full builds.
+This is helpful for preventing system memory overconsumption:
+
+image::weak_parallel{PIC}["Fifty shades of static libraries"{backend@docbook:,width=440:},align="center"]
 
 One limitation of the priority system is that it cannot affect tasks already scheduled for execution.
 When the amount of tasks ready to be executed by worker threads is below a certain threshold,
-then priorities will not apply, and tasks immediately available will be scheduled for execution.
+priorities do not apply, and tasks immediately available are scheduled for execution.
 
-This is illustrated on the following picture; the red task is waiting for the blue one to complete.
-Yet, a few green tasks are run before the red task is scheduled for execution.
+This is illustrated on the following picture; the red task can only run after the blue one and has a high priority.
+Yet, a few green tasks are run before the red task is processed.
 
 image::weak{PIC}["Red after Blue"{backend@docbook:,width=440:},align="center"]
 
-The threshold value is `njobs * GAP` where `GAP` is a constant which can be tuned as in the following example:
+The threshold value is `njobs * GAP` where `GAP` is a constant which can be tuned before a build is started:
 
 [source,python]
 ---------------
