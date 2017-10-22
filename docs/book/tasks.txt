@@ -204,26 +204,44 @@ The two functions called on lists of tasks are:
 ==== Weak order constraints
 
 A new priority system introduced in Waf 2.0 applies priorities to tasks processed in parallel.
-The first level of priority ensures that tasks part of long chains or large trees are processed early to avoid bottlenecks.
-While this is done automatically, a task can be scheduled for early
-execution by increasing the weight onto the class or on instances:
+The first level of priority ensures that tasks part of long chains or large trees are processed as early as possible to prevent bottlenecks.
+By default, the priority of a task increases proportionally with the amount of tasks depending on it.
+
+The priority value can yet be enhanced to account for the running time of the task.
+The following diagram represents a case of a slow red task that increases the total duration
+of a parallel build (swimlanes represent threads processing tasks):
+
+image::tasks_nosort{PIC}["No particular order"{backend@docbook:,width=440:},align="center"]
+
+Altering the `weight` value on the slow task (on the class or on instances) has the effect of raising the priority of instances:
 
 [source,python]
 ---------------
-class some_link_task(Task.Task):
-    run_str = 'ld ${SRC} -o ${TGT}'
+class long_red_task(Task.Task):
+    run_str = 'sleep 60'
     weight = 3  # default is 0
+    color = 'RED'
 ---------------
 
-For tasks having mostly the same tree weight, a second priority level sorts them by order of task generator declaration.
-As an immediate benefit, targets are generated mostly in the order of target declaration
-Besides that, tasks of identical type do not get clumped together, so for example link tasks consuming a lot of memory would run at distinct times.
-This is therefore beneficial for avoiding temporary resource over consumption.
+As a result, the slow task is then scheduled to run first and the overall build time is minimized:
 
-One limitation of this priority system is that it cannot affect tasks already scheduled for execution.
+image::tasks_sort{PIC}["Slowest task first"{backend@docbook:,width=440:},align="center"]
+
+For task graphs having mostly the same tree weight, a second priority level sorts tasks by order of task generator declaration.
+User scripts can be optimized to interrupt the build early in case of typical failures (syntax errors, unit tests, etc).
+In addition, tasks of identical types do not get clumped together; for example large link tasks
+can run at distinct times and therefore avoid system memory overconsumption.
+
+One limitation of the priority system is that it cannot affect tasks already scheduled for execution.
 When the amount of tasks ready to be executed by worker threads is below a certain threshold,
 then priorities will not apply, and tasks immediately available will be scheduled for execution.
-The threshold value is `njobs * GAP` where `GAP` is a constant:
+
+This is illustrated on the following picture; the red task is waiting for the blue one to complete.
+Yet, a few green tasks are run before the red task is scheduled for execution.
+
+image::weak{PIC}["Red after Blue"{backend@docbook:,width=440:},align="center"]
+
+The threshold value is `njobs * GAP` where `GAP` is a constant which can be tuned as in the following example:
 
 [source,python]
 ---------------
