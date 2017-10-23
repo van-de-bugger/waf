@@ -15,6 +15,28 @@ perl -pi -e "s#stlib#shlib#g" wscript
 echo "from waflib import Runner;Runner.GAP=2" >> wscript
 waf configure clean build -p -j4 --dwidth=800 --dtitle='Parallel build of 20 shared libraries (waf -j4)' --dnotooltip
 inkscape pdebug.svg --export-eps=weak_parallel.eps
+
+rm -rf /tmp/build
+cd $WAFDIR/utils
+./genbench.py /tmp/build 50 15 5 2
+cd /tmp/build
+perl -pi -e "s#opt.load\('compiler_cxx'\)#opt.load('compiler_cxx parallel_debug')#g" wscript
+perl -pi -e "s#stlib#shlib#g" wscript
+echo "from waflib import Runner;Runner.GAP=3" >> wscript
+waf configure clean build -p -j6 --dwidth=800 --dtitle='Parallel build representation - 50 shared libraries (waf -j6)' --dnotooltip
+inkscape pdebug.svg --export-eps=pdebug.eps
+
+The file dev.eps is generated from this last build using:
+
+#! /usr/bin/env gnuplot
+set terminal eps enhanced color size 6,4 font 'Helvetica,18' linewidth 1.5
+set output "dev.eps"
+set ylabel "Amount of active threads"
+set xlabel "Amount of active threads over time (waf -j6)"
+unset label
+set yrange [-0.1:6.2]
+set ytic 1
+plot 'pdebug.dat' using 3:7 with lines title "" lt 2
 """
 
 from waflib import Task

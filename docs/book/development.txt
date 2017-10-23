@@ -60,7 +60,7 @@ WARNING: Debugging information can be displayed only after the command-line has 
 
 ==== Build visualization
 
-The Waf tool named _parallel_debug_ is used to inject code in Waf modules and to obtain a detailed execution trace. This module is provided in the folder +waflib/extras+ and must be imported in one's project before use:
+The Waf tool named _parallel_debug_ injects code in Waf modules to obtain detailed execution traces. This module is provided in the folder +waflib/extras+ and must be imported in one's project before use:
 
 [source,python]
 ---------------
@@ -71,14 +71,14 @@ def configure(ctx):
 	ctx.load('parallel_debug', tooldir='.')
 
 def build(ctx):
-	bld(rule='touch ${TGT}', target='foo')
+	...
 ---------------
 
-The execution will generate a diagram of the tasks executed during the build in the file +pdebug.svg+:
+The execution generates a diagram of the tasks executed during the build in the file +pdebug.svg+:
 
 image::pdebug{PIC}["Parallel execution diagram"{backend@docbook:,width=500:},align="center"]
 
-The details will be generated in the file +pdebug.dat+ as space-separated values. The file can be processed by other applications such as Gnuplot to obtain other diagrams:
+Numeric values are output in the file +pdebug.dat+ as space-separated values. That file can be processed by other applications such as Gnuplot to obtain other diagrams:
 
 [source,shishell]
 ---------------
@@ -86,10 +86,9 @@ The details will be generated in the file +pdebug.dat+ as space-separated values
 set terminal png
 set output "output.png"
 set ylabel "Amount of active threads"
-set xlabel "Time in seconds"
-set title "Active threads on a parallel build (waf -j5)"
+set xlabel "Amount of active threads over time (waf -j6)"
 unset label
-set yrange [-0.1:5.2]
+set yrange [-0.1:6.2]
 set ytic 1
 plot 'pdebug.dat' using 3:7 with lines title "" lt 2
 ---------------
